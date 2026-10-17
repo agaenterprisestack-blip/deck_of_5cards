@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { Server } from 'socket.io';
 import { z } from 'zod';
 import {
-  GameError, createRoom, joinRoom, startRound, playTurn, expireTurn, showHand, finishMatch, abortMatch, roomView,
+  GameError, createRoom, joinRoom, startRound, playTurn, expireTurn, showHand, abortMatch, roomView,
 } from './game.js';
 
 const guestSchema = z.object({
@@ -29,12 +29,14 @@ const playSchema = z.object({
   revision: z.number().int().nonnegative(),
   cardIds: z.array(z.string().max(40)).max(54),
   drawSource: z.enum(['drawPile', 'discard']).default('drawPile'),
+  discardCardId: z.string().min(1).max(40).optional(),
 });
 const revisionSchema = z.object({ revision: z.number().int().nonnegative() });
 const chatSchema = z.object({ text: z.string().trim().min(1).max(280) });
 const bearer = (request) => request.headers.authorization?.startsWith('Bearer ')
   ? request.headers.authorization.slice(7) : '';
 const TURN_MS = 30_000;
+const ROUND_BREAK_MS = 15_000;
 
 export function createApp({ store, clientOrigin = 'http://localhost:5173', production = false, trustProxy = false }) {
   const app = express();
@@ -105,6 +107,8 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
       next.revision++;
       next.updatedAt = Date.now();
       if (resetTurn) tickTurn(next);
+      if (next.status !== 'roundEnd') next.nextRoundDeadline = null;
+      else if (room.status !== 'roundEnd') next.nextRoundDeadline = Date.now() + ROUND_BREAK_MS;
       // Persist completed matches before announcing a successful result.
       if (next.status === 'finished' && room.status !== 'finished') await store.saveMatch(next);
       rooms.set(next.code, next);
@@ -168,7 +172,8 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
         ack({ ok: true });
       } catch (error) {
         if (!(error instanceof GameError)) console.error(`Socket ${event} failed:`, error);
-        ack({ ok: false, error: error instanceof GameError ? error.message : 'The server could not save this action. Please retry.' });
+        ack({ ok: false, code: error instanceof GameError ? 'INVALID_ACTION' : 'SERVER_ERROR',
+          error: error instanceof GameError ? error.message : 'The server could not save this action. Please retry.' });
       }
     });
     const currentRoom = () => {
@@ -226,16 +231,18 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
       await changeRoom(requireRevision(revision), (room) => abortMatch(room, user.id));
     });
     handle('game:start', revisionSchema, async ({ revision }) => {
-      await changeRoom(requireRevision(revision), (room) => startRound(room, user.id));
+      const room = requireRevision(revision);
+      if (room.status === 'roundEnd') throw new GameError('The next round starts automatically after the 15-second break.');
+      await changeRoom(room, (next) => startRound(next, user.id));
     });
-    handle('game:play', playSchema, async ({ revision, cardIds, drawSource }) => {
-      await changeRoom(requireRevision(revision), (room) => playTurn(room, user.id, cardIds, drawSource));
+    handle('game:play', playSchema, async ({ revision, cardIds, drawSource, discardCardId }) => {
+      await changeRoom(requireRevision(revision), (room) => playTurn(room, user.id, cardIds, drawSource, discardCardId));
     });
     handle('game:show', revisionSchema, async ({ revision }) => {
       await changeRoom(requireRevision(revision), (room) => showHand(room, user.id));
     });
-    handle('game:finish', revisionSchema, async ({ revision }) => {
-      await changeRoom(requireRevision(revision), (room) => finishMatch(room, user.id));
+    handle('game:finish', revisionSchema, async () => {
+      throw new GameError('Finishing at current scores is no longer available. Rounds continue automatically until the match ends.');
     });
     handle('chat:send', chatSchema, async ({ text }) => {
       if (Date.now() - lastChat < 800) throw new GameError('Please wait a moment before sending another message.');
@@ -268,6 +275,13 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
         }).catch((error) => {
           console.error('Automatic turn failed:', error);
           io.emit('server:error', { error: 'A timed turn could not complete. Please retry your turn.' });
+        });
+      }
+      if (anyoneOnline && room.status === 'roundEnd' && Number.isFinite(room.nextRoundDeadline)
+        && room.nextRoundDeadline <= Date.now() && !locks.has(room.code)) {
+        changeRoom(room, (next) => startRound(next, next.hostId)).catch((error) => {
+          console.error('Automatic round failed:', error);
+          io.emit('server:error', { error: 'The next round could not start. The server will retry automatically.' });
         });
       }
     }

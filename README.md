@@ -2,7 +2,7 @@
 
 A responsive, real-time card game for 3–10 friends. Built with React, Tailwind CSS, Express, Socket.IO, and PostgreSQL. No payments or wagering.
 
-## Run locally
+ Run locally
 
 Requires Node.js 22.12+ and npm.
 
@@ -27,6 +27,7 @@ Without `DATABASE_URL`, the server explicitly runs in **development memory mode*
 - Host-only **Abort game** with confirmation, during or between rounds. All players see the cancellation and can return to the lobby. Aborted matches do not save scores/history or affect leaderboards.
 - Profiles with completed-match history and a leaderboard ordered by wins, then average score.
 - Responsive game table, keyboard-accessible controls, reduced-motion support, optional synthesized game sounds.
+- Invalid gameplay actions shake the tapped button or card instead of showing an alert. Screen readers still receive the rejection reason; reduced-motion users see a brief red outline instead. Connection, authentication, and server failures still show error messages. A wrong show that completes a round still displays its shared round result.
 
 ## Agreed rules
 
@@ -39,21 +40,27 @@ These resolve the original brief's unspecified details. They are also available 
 | Same number | Drop a group of matching ranks (including duplicate suits across decks), or a single card matching the top discard's rank. |
 | Rummy | Drop a distinct-suit, same-rank set of 3–4. Mixed-rank runs are not allowed. Jokers are not wildcards. |
 | Continuation | Drop a single card one rank above the top discard in the same suit. With Any Card enabled this does not further restrict single-card plays. |
-| Turn | Tap the draw-pile card or last-discard card directly on the table to select the source (highlighted), then confirm with Drop & draw. Hands never exceed 5 cards: at 5, drop at least one before taking a card from either pile. Below 5, drawing without dropping is allowed. There is no separate source selector. Taking the discard gives only the previous visible top card, never one just dropped; dropped cards become the new discard. An empty discard pile cannot be selected. At timeout, a full hand skips without drawing or changing cards; a hand below 5 draws one from the draw pile. |
+| Turn | Tap the draw pile or any one card in the latest face-up dropped group, then confirm with Drop & draw. All cards in a multi-card drop are visible and individually selectable; take exactly one, never a card you are dropping this turn. A new drop covers the previous group. Without a new drop, unclaimed cards in the latest group remain available; taking its final card does not uncover older cards. Hands never exceed 5 cards: at 5, drop at least one before taking a card from either pile. Below 5, drawing without dropping is allowed. At timeout, a full hand skips unchanged; a smaller hand draws one from the draw pile. |
 | Show | Unlocked after every active player completes one turn in each dealt round, including timed-out draws or skips. Show at the start of your turn with any hand value. A unique lowest showing player adds 0; others add their own hand values. |
 | Clash | If anyone matches the showing hand value, the showing player adds 50, matching players add 0, and others add their own hand values. Applies even when someone else has a lower hand. |
 | Beaten show | Without a matching hand, a showing player beaten by a lower hand adds 50; everyone else adds their own hand value. |
 | Values | Joker 0, Ace 1, numbers face value, Jack 11, Queen 12, King 13. |
-| Exhausted pile | Recycle discards, keeping the top card. If no cards remain available, reveal hands: lowest totals, including ties, score 0; others get +50. |
+| Exhausted pile | Recycle only covered discards, keeping the entire latest face-up group available. If a draw-pile turn has no draw or recyclable cards, reveal hands: lowest totals, including ties, score 0; others get +50. Visible cards may still be taken by choosing the discard source. |
 | Elimination | At the table's selected limit (101, 201, 401, or 1001 points; default 201). Eliminated players can watch and chat, but are not dealt cards or scored again. |
-| Winning | Last active player wins. The host may finish between rounds; lowest-score active players share the win. |
+| Winning | Last active player wins. There is no option to finish early at current scores. |
 
 Rules and the points-to-elimination limit are configurable when creating a table, not during a match. Turn actions include a revision number to reject stale/double submissions.
-Round points are added to cumulative match scores; a round award of 0 does not reset previous points. The opening-turn show lock resets on every deal and excludes eliminated players.
+Round points are added to cumulative match scores; a round award of 0 does not reset previous points. The opening-turn show lock resets on every deal and excludes eliminated players. After each completed round, a server-controlled 15-second countdown automatically deals the next round, without host approval. The host starts only the first round and can still abort during the break, without saving scores. Chat and reconnects do not reset the countdown; if everyone is offline, an overdue deal resumes when someone reconnects. Finished or aborted matches never restart.
+
+Everyone sees a centered winner celebration after each round and at match completion, with a trophy badge, winner names, green-highlighted cards, and a brief confetti animation. All players earning 0 round points share the round celebration, including matching players in a clash. A failed Show hand also displays a friendly "Wrong show" notice with a smiling sweat emoji, the showing player's name, the +50 penalty, and whether it was a clash or a lower opposing hand. Everyone sees this notice alongside the winners and countdown, including when the show ends the match; it is also included in Results. It clears from the table on the next deal. Final celebrations use the overall match winners, not the last round's winners. Round celebrations use already-revealed result cards; current match-winning hands are shared only when the match finishes, including timeout victories. Active hands otherwise remain private. Reduced-motion preferences disable the animation. Full round details remain available in Results.
 
 Select one card or multiple cards of the same number/face only (for example, two 7s or two Kings). Tap selected cards to deselect them before choosing a different rank. **Show hand** is on the left; **Drop & draw** always remains on the right and is enabled on your connected, idle turn even without a selection. With 5 cards, tapping it without selecting cards displays a prompt instead of drawing; below 5 cards, it draws without dropping. It is disabled while submitting, disconnected, or on another player's turn. Both controls have at least 44px touch targets on mobile. Server validation also rejects mixed-rank multi-card drops.
 
-On phones and tablets up to 900px wide, the game uses a portrait-friendly, viewport-sized layout with the table above your hand and move buttons. A bottom icon bar opens Chat, Scores, Rules, and (after a round) Results without scrolling the page. Panels have their own scroll area and a close button; chat drafts survive closing and reopening. Tap a selected card again to return it to its resting position. Short landscape screens also support a side-by-side table and hand.
+Gameplay uses an original green-felt, wood-edged table with player seats around the perimeter, compact draw/discard piles in a non-scrolling center, and your hand along the bottom. On phones and tablets up to 1100px wide, play in landscape: a fixed right-hand icon rail opens Chat, Scores, Rules, and (after a round) Results without page scrolling. Portrait screens display a rotation prompt. Panels have their own scroll area and a close button; chat drafts survive closing and reopening. Tap a selected card again to return it to its resting position. Player portraits use initials rather than external photos; remaining lives and the 30-second timer remain visible.
+
+Table Talk includes eight quick emoji reactions, including a red heart and a red angry face. A reaction is sent as a normal table chat message and floats from the sender's seat, sways toward the table, and fades away over four seconds on every participant's table, even when chat is closed. Your own reactions originate beside your hand; opponents' reactions start at their avatar positions in your seating layout. Top-row reactions drift down into the table instead of disappearing beyond its edge. Multiple reactions can fly at once without blocking table controls; sender names remain in chat and accessible reaction labels rather than visual banners. Expired reactions are not replayed after refreshing. Reduced-motion preferences show a stationary emoji at its sender's seat until it disappears. Reactions preserve your text draft, use the existing chat rate limit, and never appear in other tables. Any emoji can also be typed into a normal message.
+
+Mobile Table Talk opens as a compact bottom-right popup with history hidden initially. Use Show history / Hide history to expand or collapse messages while keeping reactions and the message input available. Tap outside the popup, press Escape, or use its close button to dismiss it; unfinished text stays saved. Desktop chat also offers the history toggle and starts expanded.
 
 ## PostgreSQL
 

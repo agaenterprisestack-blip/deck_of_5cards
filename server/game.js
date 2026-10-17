@@ -117,9 +117,9 @@ function currentPlayer(room, userId) {
 
 function draw(room) {
   if (!room.drawPile.length) {
-    const top = room.discardPile.pop();
-    room.drawPile = shuffle(room.discardPile);
-    room.discardPile = [top];
+    const visibleIds = new Set(room.lastPlay.map((card) => card.id));
+    room.drawPile = shuffle(room.discardPile.filter((card) => !visibleIds.has(card.id)));
+    room.discardPile = room.discardPile.filter((card) => visibleIds.has(card.id));
   }
   if (!room.drawPile.length) throw new GameError('No cards are available to draw.');
   return room.drawPile.pop();
@@ -130,30 +130,35 @@ function advance(room, player) {
   room.turnId = active[(active.findIndex((entry) => entry.id === player.id) + 1) % active.length].id;
 }
 
-export function playTurn(room, userId, cardIds, drawSource = 'drawPile') {
+export function playTurn(room, userId, cardIds, drawSource = 'drawPile', discardCardId) {
   const player = currentPlayer(room, userId);
   if (!['drawPile', 'discard'].includes(drawSource)) throw new GameError('Choose the draw pile or last discard.');
-  if (drawSource === 'discard' && !room.discardPile.length) throw new GameError('There is no last discard to take.');
+  if (drawSource !== 'discard' && discardCardId !== undefined) throw new GameError('Choose the discard source to take a visible card.');
+  if (drawSource === 'discard' && !room.lastPlay.length) throw new GameError('There is no last discard to take.');
+  const pickedDiscard = drawSource === 'discard'
+    ? room.lastPlay.find((card) => card.id === (discardCardId ?? room.lastPlay.at(-1)?.id)) : null;
+  if (drawSource === 'discard' && !pickedDiscard) throw new GameError('Choose one card from the latest dropped group.');
   if (!Array.isArray(cardIds) || cardIds.length > player.hand.length
     || new Set(cardIds).size !== cardIds.length) throw new GameError('Invalid card selection.');
   const cards = cardIds.map((id) => player.hand.find((card) => card.id === id));
   if (cards.some((card) => !card)) throw new GameError('Select only cards in your hand.');
-  if (cards.length && !legalPlay(cards, room.discardPile.at(-1), room.rules)) {
+  if (cards.length && !legalPlay(cards, room.lastPlay.at(-1), room.rules)) {
     throw new GameError('That combination is not a legal play.');
   }
   if (player.hand.length - cards.length + 1 > 5) {
     throw new GameError('Your hand cannot exceed 5 cards. Select cards to drop before drawing.');
   }
-  // Reserve the previous top discard before adding this turn's dropped cards.
-  const pickedDiscard = drawSource === 'discard' ? room.discardPile.pop() : null;
+  // Reserve the chosen visible card before covering the group with this turn's drop.
+  if (pickedDiscard) {
+    room.discardPile = room.discardPile.filter((card) => card.id !== pickedDiscard.id);
+    room.lastPlay = room.lastPlay.filter((card) => card.id !== pickedDiscard.id);
+  }
   if (cards.length) {
     player.hand = player.hand.filter((card) => !cardIds.includes(card.id));
     room.discardPile.push(...cards);
     room.lastPlay = cards;
-  } else if (pickedDiscard) {
-    room.lastPlay = room.discardPile.length ? [room.discardPile.at(-1)] : [];
   }
-  if (!pickedDiscard && !room.drawPile.length && room.discardPile.length <= 1) {
+  if (!pickedDiscard && !room.drawPile.length && room.discardPile.length <= room.lastPlay.length) {
     const active = room.players.filter((entry) => !entry.eliminated);
     const minimum = Math.min(...active.map((entry) => handValue(entry.hand)));
     settleRound(room, {
@@ -165,7 +170,7 @@ export function playTurn(room, userId, cardIds, drawSource = 'drawPile') {
   }
   player.hand.push(pickedDiscard || draw(room));
   if (!room.completedTurnIds.includes(userId)) room.completedTurnIds.push(userId);
-  const pickup = pickedDiscard ? 'took the previous last discard' : 'drew a card from the draw pile';
+  const pickup = pickedDiscard ? 'took one card from the previous last discard group' : 'drew a card from the draw pile';
   room.lastAction = cards.length
     ? `${player.name} dropped ${cards.length} card${cards.length === 1 ? '' : 's'} and ${pickup}.`
     : `${player.name} ${pickup}.`;
@@ -273,14 +278,18 @@ export function roomView(room, viewerId, connectedIds = new Set()) {
   return {
     code: room.code, name: room.name, hostId: room.hostId, capacity: room.capacity,
     pointsToEliminate: room.pointsToEliminate, rules: room.rules, status: room.status, round: room.round, turnId: room.turnId,
-    revision: room.revision, deckCount: deckCount(room.players.filter((p) => !p.eliminated).length),
+    revision: room.revision, nextRoundDeadline: room.nextRoundDeadline ?? null,
+    deckCount: deckCount(room.players.filter((p) => !p.eliminated).length),
     showUnlocked: room.status === 'playing' && room.players
       .filter((player) => !player.eliminated)
       .every((player) => room.completedTurnIds.includes(player.id)),
-    drawCount: room.drawPile.length, discard: room.discardPile.at(-1) || null,
+    drawCount: room.drawPile.length, discard: room.lastPlay.at(-1) || null,
     lastPlay: room.lastPlay, lastAction: room.lastAction,
     results: room.results, chat: room.chat,
     winnerIds: room.winnerIds || (room.winnerId ? [room.winnerId] : []),
+    winnerHands: room.status === 'finished' ? room.players
+      .filter((player) => (room.winnerIds || [room.winnerId]).includes(player.id))
+      .map((player) => ({ id: player.id, name: player.name, hand: player.hand })) : [],
     players: room.players.map(({ hand, ...player }) => ({
       ...player, cardCount: hand.length, connected: connectedIds.has(player.id),
       ...(player.id === viewerId ? { hand, value: handValue(hand) } : {}),

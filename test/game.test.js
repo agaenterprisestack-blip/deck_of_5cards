@@ -40,6 +40,31 @@ test('all 3–10 player games deal five cards and reveal one starter', () => {
 test('card values match ranks, with Joker zero and court cards 11–13', () => {
   assert.equal(handValue([0, 1, 7, 11, 12, 13].map((rank) => card(rank))), 44);
 });
+test('match winning hands are shared with all viewers only after the match finishes', () => {
+  const room = fixture();
+  hands(room, [[1], [2], [3]]);
+  assert.deepEqual(roomView(room, 'p1').winnerHands, []);
+  showHand(room, 'p0');
+  assert.deepEqual(roomView(room, 'p1').winnerHands, []);
+  room.players.forEach((player) => { player.score = 10; });
+  finishMatch(room, 'p0');
+  for (const viewer of ['p0', 'p1', 'p2']) {
+    const view = roomView(room, viewer);
+    assert.deepEqual(view.winnerHands, room.players.map(({ id, name, hand }) => ({ id, name, hand })));
+    assert.equal(view.players.filter((player) => 'hand' in player).length, 1);
+  }
+});
+test('timeout match winner is revealed without exposing eliminated hands', () => {
+  const room = fixture();
+  room.players[2].eliminated = true;
+  room.players[0].lives = 1;
+  room.turnId = 'p0';
+  expireTurn(room);
+  const view = roomView(room, 'p0');
+  assert.equal(view.status, 'finished');
+  assert.deepEqual(view.winnerHands.map((player) => player.id), ['p1']);
+  assert.deepEqual(view.winnerHands[0].hand, room.players[1].hand);
+});
 test('any-card rule allows a single card but not arbitrary groups', () => {
   const rules = { anyCard: true };
   assert.equal(legalPlay([card(12)], card(3), rules), true);
@@ -204,13 +229,15 @@ test('taking last discard without dropping removes only the previous top and doe
   const room = fixture();
   hands(room, [[1, 2, 3, 4], [2], [3]]);
   room.discardPile = [card(5, 'hearts', 'lower'), card(8, 'spades', 'visible')];
+  room.lastPlay = [room.discardPile.at(-1)];
   const beforeHandSize = room.players[0].hand.length;
   const drawPile = [...room.drawPile];
   playTurn(room, 'p0', [], 'discard');
   assert.equal(room.players[0].hand.length, beforeHandSize + 1);
   assert.equal(room.players[0].hand.at(-1).id, 'visible');
   assert.deepEqual(room.discardPile.map((entry) => entry.id), ['lower']);
-  assert.deepEqual(room.lastPlay.map((entry) => entry.id), ['lower']);
+  assert.deepEqual(room.lastPlay, []);
+  assert.equal(roomView(room, 'p1').discard, null);
   assert.deepEqual(room.drawPile, drawPile);
   assert.equal(room.turnId, 'p1');
   assert.ok(room.completedTurnIds.includes('p0'));
@@ -240,6 +267,7 @@ test('discard pickups validate the drop against the old top before removing it',
   hands(room, [[8], [2], [3]]);
   room.rules = { continuation: true };
   room.discardPile = [card(7, 'clubs', 'old-top')];
+  room.lastPlay = [...room.discardPile];
   playTurn(room, 'p0', ['p0-0'], 'discard');
   assert.equal(room.players[0].hand.at(-1).id, 'old-top');
   assert.equal(room.discardPile.at(-1).rank, 8);
@@ -278,6 +306,7 @@ test('a discard can be taken even with no draw cards or recyclable discards', ()
   hands(room, [[1], [2], [3]]);
   room.drawPile = [];
   room.discardPile = [card(7, 'spades', 'last')];
+  room.lastPlay = [...room.discardPile];
   playTurn(room, 'p0', [], 'discard');
   assert.equal(room.status, 'playing');
   assert.equal(room.results.length, 0);
@@ -303,6 +332,7 @@ test('empty draw pile recycles discarded cards but preserves its top card', () =
   hands(room, [[3], [2], [4]]);
   room.drawPile = [];
   room.discardPile = [card(7, 'spades', 'recycle'), card(9, 'clubs', 'top')];
+  room.lastPlay = [room.discardPile.at(-1)];
   playTurn(room, 'p0', []);
   assert.equal(room.players[0].hand.at(-1).id, 'recycle');
   assert.equal(room.discardPile.length, 1);
@@ -313,11 +343,68 @@ test('fully exhausted piles settle lowest hands including ties, without a show p
   hands(room, [[1], [1], [5]]);
   room.drawPile = [];
   room.discardPile = [card(9)];
+  room.lastPlay = [...room.discardPile];
   playTurn(room, 'p0', []);
   assert.equal(room.status, 'roundEnd');
   assert.equal(room.turnId, null);
   assert.deepEqual(room.players.map((player) => player.score), [0, 0, 50]);
   assert.equal(room.results[0].showingId, null);
+});
+test('every card in the latest same-number or rummy group can be chosen exactly once', () => {
+  for (const size of [2, 3, 4, 5]) {
+    for (let chosen = 0; chosen < size; chosen++) {
+      for (const rummyOnly of [false, true]) {
+        if (rummyOnly && (size < 3 || size > 4)) continue;
+        const room = fixture();
+        hands(room, [Array(size).fill(7), [2], [3]]);
+        room.players[0].hand.forEach((entry, index) => { entry.suit = ['clubs', 'diamonds', 'hearts', 'spades', 'clubs'][index]; });
+        room.rules = rummyOnly ? { rummy: true } : { sameNumber: true };
+        const group = [...room.players[0].hand];
+        playTurn(room, 'p0', group.map((entry) => entry.id));
+        assert.deepEqual(roomView(room, 'p1').lastPlay, group);
+        const pile = [...room.drawPile];
+        const allIds = () => [...room.drawPile, ...room.discardPile, ...room.players.flatMap((p) => p.hand)]
+          .map((entry) => entry.id).sort();
+        const before = allIds();
+        playTurn(room, 'p1', [], 'discard', group[chosen].id);
+        assert.equal(room.players[1].hand.at(-1).id, group[chosen].id);
+        assert.equal(room.players[1].hand.length, 2);
+        assert.deepEqual(room.lastPlay, group.filter((entry) => entry.id !== group[chosen].id));
+        assert.deepEqual(room.drawPile, pile);
+        assert.deepEqual(allIds(), before);
+      }
+    }
+  }
+});
+test('new drops cover older groups and reject covered, forged, multiple, or newly dropped pickup IDs atomically', () => {
+  const room = fixture();
+  hands(room, [[7, 7, 7], [8, 8], [2]]);
+  playTurn(room, 'p0', ['p0-0', 'p0-1', 'p0-2']);
+  playTurn(room, 'p1', ['p1-0', 'p1-1'], 'discard', 'p0-0');
+  assert.equal(room.players[1].hand.at(-1).id, 'p0-0');
+  assert.deepEqual(room.lastPlay.map((entry) => entry.id), ['p1-0', 'p1-1']);
+  const before = structuredClone(room);
+  for (const id of ['p0-1', 'forged', 'p2-0', ['p1-0', 'p1-1']]) {
+    assert.throws(() => playTurn(room, 'p2', ['p2-0'], 'discard', id), /latest dropped group/);
+    assert.deepEqual(room, before);
+  }
+  assert.throws(() => playTurn(room, 'p2', [], 'drawPile', 'p1-0'), /discard source/);
+  assert.deepEqual(room, before);
+});
+test('recycling preserves the entire visible group and only shuffles covered discards', () => {
+  const room = fixture();
+  hands(room, [[7, 7, 7], [2], [3]]);
+  playTurn(room, 'p0', ['p0-0', 'p0-1', 'p0-2']);
+  const group = [...room.lastPlay];
+  const covered = room.discardPile[0];
+  room.drawPile = [];
+  playTurn(room, 'p1', []);
+  assert.equal(room.players[1].hand.at(-1).id, covered.id);
+  assert.deepEqual(room.discardPile, group);
+  assert.deepEqual(room.lastPlay, group);
+  playTurn(room, 'p2', []);
+  assert.equal(room.status, 'roundEnd');
+  assert.deepEqual(room.lastPlay, group);
 });
 test('unique lowest show adds zero to showing player and own hand values to others', () => {
   const room = fixture();

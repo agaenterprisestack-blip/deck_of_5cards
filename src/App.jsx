@@ -129,13 +129,17 @@ export default function App() {
       .finally(() => { if (active) setDataLoading(false); });
     return () => { active = false; };
   }, [page, user?.id, token, refresh]);
-  async function send(event, payload) {
+  async function send(event, payload, onInvalidAction) {
     if (!socket?.connected) { notify('You are not connected yet. Please wait or reconnect.'); return false; }
     if (busy) return false;
     setBusy(true);
     try {
       const response = await socket.timeout(10_000).emitWithAck(event, payload);
       if (response.code === 'AUTH_REQUIRED') { clearSession(); setModal('auth'); }
+      if (!response.ok && response.code === 'INVALID_ACTION' && onInvalidAction) {
+        onInvalidAction(response.error);
+        return false;
+      }
       if (!response.ok) throw new Error(response.error);
       if (sound && event.startsWith('game:') && audioContext.current) {
         try {
