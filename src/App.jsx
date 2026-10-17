@@ -5,7 +5,7 @@ import { Avatar, Icon, Logo, Modal, RulesContent, ruleLabels } from './component
 import Lobby, { History, Leaderboard } from './Lobby.jsx';
 import Game from './Game.jsx';
 
-function AuthForm({ onAuthenticated }) {
+function AuthForm({ signup, onSwitch, onAuthenticated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return <>
@@ -13,14 +13,22 @@ function AuthForm({ onAuthenticated }) {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(event.currentTarget));
       setBusy(true); setError('');
-      try { onAuthenticated(await request('/guest', { method: 'POST', body: JSON.stringify(data) })); }
+      if (signup && data.password !== data.confirmPassword) {
+        setError('Passwords do not match.'); setBusy(false); return;
+      }
+      try { onAuthenticated(await request(signup ? '/signup' : '/login', { method: 'POST',
+        body: JSON.stringify({ name: data.name, password: data.password }) })); }
       catch (failure) { setError(failure.message); }
       finally { setBusy(false); }
     }}>
-      <label>Your name<input name="name" placeholder="What should we call you?" minLength={1} maxLength={24} autoComplete="nickname" required autoFocus /></label>
+      <label>Username<input name="name" placeholder="Your unique player name" minLength={1} maxLength={24} autoComplete="username" required autoFocus disabled={busy} /></label>
+      <label>Password<input name="password" type="password" minLength={signup ? 10 : 1} maxLength={128}
+        autoComplete={signup ? 'new-password' : 'current-password'} required disabled={busy} /></label>
+      {signup && <label>Confirm password<input name="confirmPassword" type="password" minLength={10} maxLength={128} autoComplete="new-password" required disabled={busy} /></label>}
       {error && <p className="form-error" role="alert">{error}</p>}
-      <button className="button button-dark button-full" disabled={busy}>{busy ? 'One moment…' : 'Let’s play'}<Icon name="arrow" size={17} /></button>
-      <p className="fine-print">No email or password. Refresh this tab to keep your seat. A new session creates a new player, even with the same name.</p>
+      <button className="button button-dark button-full" disabled={busy}>{busy ? 'One moment…' : signup ? 'Create account' : 'Log in'}<Icon name="arrow" size={17} /></button>
+      <p className="fine-print">{signup ? 'Usernames are unique regardless of capitalization. Use a password of 10–128 characters. Keep it safe: password recovery is not available yet.' : 'Log in to recover your player profile, scores, and reserved seat.'}</p>
+      <button type="button" className="text-button" disabled={busy} onClick={onSwitch}>{signup ? 'Already have an account? Log in' : 'New to the table? Sign up'}</button>
     </form>
   </>;
 }
@@ -104,13 +112,13 @@ export default function App() {
     connection.on('disconnect', (reason) => {
       setConnected(false);
       if (reason === 'io server disconnect') {
-        clearSession(); notify('Your session ended. Enter your name to play again.');
+        clearSession(); notify('Your session ended. Log in to play again.');
       }
     });
     connection.on('connect_error', (error) => {
       setConnected(false);
       if (error.data?.code === 'AUTH_REQUIRED') {
-        clearSession(); setModal('auth'); notify(error.message);
+        clearSession(); setPage('login'); notify(error.message);
       } else setBackendError(error.message);
     });
     connection.on('lobby', setRooms);
@@ -121,7 +129,7 @@ export default function App() {
     return () => { connection.removeAllListeners(); connection.disconnect(); setConnected(false); };
   }, [token, user?.id, notify, clearSession]);
   useEffect(() => {
-    if (!user || !token || page === 'play') return;
+    if (!user || !token || !['leaderboard', 'profile'].includes(page)) return;
     let active = true;
     setDataLoading(true); setDataError(''); setData([]);
     request(page === 'leaderboard' ? '/leaderboard' : '/history', { token }).then((value) => { if (active) setData(value); })
@@ -135,7 +143,7 @@ export default function App() {
     setBusy(true);
     try {
       const response = await socket.timeout(10_000).emitWithAck(event, payload);
-      if (response.code === 'AUTH_REQUIRED') { clearSession(); setModal('auth'); }
+      if (response.code === 'AUTH_REQUIRED') { clearSession(); setPage('login'); }
       if (!response.ok && response.code === 'INVALID_ACTION' && onInvalidAction) {
         onInvalidAction(response.error);
         return false;
@@ -175,7 +183,7 @@ export default function App() {
     }
     finally { setBusy(false); }
   }
-  const signIn = () => setModal('auth');
+  const signIn = () => setPage('login');
   function navigate(next) {
     if (!user && next !== 'play') { signIn(); return; }
     setPage(next);
@@ -204,24 +212,27 @@ export default function App() {
         {restoring ? <span className="fine-print">Reconnecting…</span> : user ? <>
           <button className={`profile-button ${page === 'profile' ? 'profile-active' : ''}`} onClick={() => navigate('profile')}><Avatar name={user.name} small /><span>{user.name}</span></button>
           <button className="icon-button logout-button" aria-label="End player session" onClick={logout} disabled={busy}><Icon name="exit" size={17} /></button>
-        </> : <button className="button button-outline button-small" onClick={signIn}>Come on in <Icon name="arrow" size={15} /></button>}
+        </> : <button className="button button-outline button-small" onClick={signIn}>Log in <Icon name="arrow" size={15} /></button>}
       </div>
     </div></header>
     <main className="main-container">
       {backendError && <div className="inline-warning" role="alert"><span>{backendError}</span><button onClick={() => { socket?.connect(); setRefresh((value) => value + 1); }}>Retry connection</button></div>}
       {health?.storage === 'memory' && <div className="dev-banner"><span className="status-dot" />Local play mode<span className="dev-detail"> · Player sessions & history reset when the server restarts. Connect PostgreSQL for persistence.</span></div>}
-      {page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} />
+      {(page === 'login' || page === 'signup') && !user ? <section className="auth-page">
+        <span className="eyebrow">YOUR SEAT AT THE TABLE</span>
+        <h1>{page === 'signup' ? 'Create your account.' : 'Welcome back.'}</h1>
+        <p>{page === 'signup' ? 'One unique name. Your own cards and scores.' : 'Log in to join your friends.'}</p>
+        <AuthForm key={page} signup={page === 'signup'} onSwitch={() => setPage(page === 'signup' ? 'login' : 'signup')}
+          onAuthenticated={({ user: currentUser, token: newToken }) => {
+            sessionStorage.setItem('five-cards-token', newToken); setToken(newToken); setUser(currentUser);
+            setPage('play'); notify(`Welcome to the table, ${currentUser.name}.`, 'success');
+          }} />
+      </section> : page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} />
         : <Lobby user={user} rooms={rooms} connected={connected} onCreate={() => setModal('create')} onJoin={(code) => send('room:join', { code })} onRules={() => setModal('rules')} onSignIn={signIn} />
         : dataError ? <section className="data-page"><h2>Couldn’t load this page.</h2><p role="alert" className="form-error">{dataError}</p><button className="button button-dark" onClick={() => setRefresh((value) => value + 1)}>Try again</button></section>
           : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <History entries={data} user={user} loading={dataLoading} />}
     </main>
     <footer className="site-footer"><div><Logo /><span>A little less. A lot more fun.</span></div><p>Made for the love of the game. <span>♠ ♥ ♣ ♦</span></p><button onClick={() => setModal('rules')}>House rules <Icon name="arrow" size={14} /></button></footer>
-    {modal === 'auth' && <Modal title="There’s a seat for you." subtitle="Just enter your name. No signup needed." notification={toast} onClose={() => setModal(null)}>
-      <AuthForm onAuthenticated={({ user: currentUser, token: newToken }) => {
-        sessionStorage.setItem('five-cards-token', newToken); setToken(newToken); setUser(currentUser);
-        setModal(null); setPage('play'); notify(`Welcome to the table, ${currentUser.name}.`, 'success');
-      }} />
-    </Modal>}
     {modal === 'create' && <Modal title="Make it your table." subtitle="A name, a few rules, and your favorite people." notification={toast} onClose={() => setModal(null)}><CreateForm send={send} busy={busy} onDone={() => { setModal(null); setPage('play'); }} /></Modal>}
     {modal === 'rules' && <Modal title="The art of keeping it low." subtitle="Your pocket guide to a very good card night." notification={toast} onClose={() => setModal(null)}><RulesContent /></Modal>}
     {toast && !modal && <div className={`toast toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'error' ? 'chat' : 'check'} size={19} /><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><Icon name="close" size={16} /></button></div>}

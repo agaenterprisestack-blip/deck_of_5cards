@@ -13,15 +13,25 @@ async function until(predicate, message = 'Expected realtime state was not recei
   }
 }
 
-test('same-name guests have independent identities and revocable sessions', async () => {
+test('registered usernames are unique and accounts can log back in with revocable sessions', async () => {
   const store = await createStore();
-  const first = await store.createPlayer('Alex');
-  const second = await store.createPlayer('Alex');
-  assert.notEqual(first.id, second.id);
+  const guest = await store.createPlayer('Alex');
+  const first = await store.register('Alex', 'test-password-one');
+  assert.notEqual(first.id, guest.id);
+  await assert.rejects(store.register(' alex ', 'another-password'), /already taken/);
+  assert.deepEqual(await store.login(' ALEX ', 'test-password-one'), first);
+  await assert.rejects(store.login('Alex', 'wrong-password'), /Incorrect username or password/);
+  await assert.rejects(store.login('Unknown', 'wrong-password'), /Incorrect username or password/);
+  const second = await store.register('Blake', 'test-password-two');
   const firstToken = await store.session(first);
   const secondToken = await store.session(second);
   assert.deepEqual(await store.authenticate(firstToken), first);
   assert.deepEqual(await store.authenticate(secondToken), second);
+  const races = await Promise.allSettled([
+    store.register('Race', 'test-password-one'), store.register('RACE', 'test-password-two'),
+  ]);
+  assert.equal(races.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(races.filter((result) => result.status === 'rejected').length, 1);
   await store.logout(firstToken);
   assert.equal(await store.authenticate(firstToken), null);
   assert.deepEqual(await store.authenticate(secondToken), second);
@@ -276,7 +286,7 @@ test('host abort broadcasts cancellation, saves nothing, survives reconnect, and
   }
 });
 
-test('HTTP and Socket.IO support name-only entry, rooms, private hands, chat, reconnect and completed matches', { timeout: 30_000 }, async (t) => {
+test('HTTP and Socket.IO support account login, rooms, private hands, chat, reconnect and completed matches', { timeout: 30_000 }, async (t) => {
   const store = await createStore();
   const server = createApp({ store });
   await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
@@ -309,22 +319,28 @@ test('HTTP and Socket.IO support name-only entry, rooms, private hands, chat, re
   assert.equal((await api('/health')).data.storage, 'memory');
   assert.equal((await api('/me')).status, 401);
   for (const name of ['', '   ', 'x'.repeat(25), 123, null]) {
-    assert.equal((await api('/guest', { method: 'POST', data: { name } })).status, 400);
+    assert.equal((await api('/signup', { method: 'POST', data: { name, password: 'test-password' } })).status, 400);
   }
   const accounts = [];
   for (let index = 0; index < 4; index++) {
-    const result = await api('/guest', { method: 'POST', data: { name: `  Player ${index}  ` } });
+    const result = await api('/signup', { method: 'POST', data: { name: `  Player ${index}  `, password: 'test-password' } });
     assert.equal(result.status, 201);
     assert.equal('email' in result.data.user, false);
     assert.equal('password_hash' in result.data.user, false);
     assert.equal(result.data.user.name, `Player ${index}`);
     accounts.push(result.data);
   }
-  const sameName = await api('/guest', { method: 'POST', data: { name: 'Player 0' } });
+  const duplicate = await api('/signup', { method: 'POST', data: { name: ' player 0 ', password: 'test-password' } });
+  assert.equal(duplicate.status, 409);
+  const sameName = await api('/signup', { method: 'POST', data: { name: 'Another Player', password: 'test-password' } });
   assert.equal(sameName.status, 201);
-  assert.notEqual(sameName.data.user.id, accounts[0].user.id);
-  assert.notEqual(sameName.data.token, accounts[0].token);
-  assert.equal((await api('/guest', { method: 'POST', data: { name: 'A' } })).status, 201);
+  assert.equal((await api('/signup', { method: 'POST', data: { name: 'A', password: 'short' } })).status, 400);
+  assert.equal((await api('/guest', { method: 'POST', data: { name: 'A' } })).status, 404);
+  assert.equal((await api('/login', { method: 'POST', data: { name: 'Player 0', password: 'wrong' } })).status, 401);
+  const loggedIn = await api('/login', { method: 'POST', data: { name: 'PLAYER 0', password: 'test-password' } });
+  assert.equal(loggedIn.status, 200);
+  assert.deepEqual(loggedIn.data.user, accounts[0].user);
+  assert.notEqual(loggedIn.data.token, accounts[0].token);
   assert.equal((await api('/auth/login', { method: 'POST', data: { name: 'Player 0' } })).status, 404);
   assert.deepEqual((await api('/me', { token: accounts[0].token })).data.user, accounts[0].user);
   const unauth = io(url, { auth: { token: 'invalid' }, transports: ['websocket'], reconnection: false });

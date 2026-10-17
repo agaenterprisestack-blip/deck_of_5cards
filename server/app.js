@@ -9,13 +9,15 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { Server } from 'socket.io';
 import { z } from 'zod';
+import { AccountError } from './store.js';
 import {
   GameError, createRoom, joinRoom, startRound, playTurn, expireTurn, showHand, abortMatch, roomView,
 } from './game.js';
 
-const guestSchema = z.object({
-  name: z.string().trim().min(1, 'Enter your name.').max(24, 'Use 24 characters or fewer.'),
-});
+const usernameSchema = z.string().trim().normalize('NFKC').min(1, 'Enter your username.')
+  .max(24, 'Use 24 characters or fewer.').regex(/^[a-zA-Z0-9_ -]+$/, 'Use letters, numbers, spaces, hyphens or underscores.');
+const loginSchema = z.object({ name: usernameSchema, password: z.string().min(1, 'Enter your password.').max(128) });
+const signupSchema = loginSchema.extend({ password: z.string().min(10, 'Use at least 10 characters for your password.').max(128, 'Use 128 characters or fewer.') });
 const codeSchema = z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z2-9]{6}$/) });
 const createSchema = z.object({
   name: z.string().trim().min(2).max(36),
@@ -47,20 +49,30 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
   app.use(cors(corsOptions));
   app.use(express.json({ limit: '16kb' }));
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
-    message: { error: 'Too many new player sessions. Please wait 15 minutes.' } });
+    message: { error: 'Too many authentication attempts. Please wait 15 minutes.' } });
   app.get('/api/health', (_request, response) => response.json({
     ok: true, storage: store.persistent ? 'postgresql' : 'memory', activeMatches: 'in-memory',
   }));
-  app.post('/api/guest', authLimiter, async (request, response) => {
-    const parsed = guestSchema.safeParse(request.body);
-    if (!parsed.success) return response.status(400).json({ error: parsed.error.issues[0].message });
-    const user = await store.createPlayer(parsed.data.name);
-    const token = await store.session(user);
-    response.status(201).json({ user, token });
-  });
+  for (const [path, schema, method, status] of [
+    ['/api/signup', signupSchema, 'register', 201], ['/api/login', loginSchema, 'login', 200],
+  ]) {
+    app.post(path, authLimiter, async (request, response) => {
+      response.set('Cache-Control', 'no-store');
+      const parsed = schema.safeParse(request.body);
+      if (!parsed.success) return response.status(400).json({ error: parsed.error.issues[0].message });
+      try {
+        const user = await store[method](parsed.data.name, parsed.data.password);
+        const token = await store.session(user);
+        response.status(status).json({ user, token });
+      } catch (error) {
+        if (!(error instanceof AccountError)) throw error;
+        response.status(error.status).json({ error: error.message });
+      }
+    });
+  }
   const requireUser = async (request, response, next) => {
     const user = await store.authenticate(bearer(request));
-    if (!user) return response.status(401).json({ error: 'Your session ended. Enter your name to play again.' });
+    if (!user) return response.status(401).json({ error: 'Your session ended. Log in to play again.' });
     request.user = user;
     next();
   };
@@ -131,7 +143,7 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     try {
       const user = await store.authenticate(socket.handshake.auth?.token);
       if (!user) {
-        const error = new Error('Your session expired. Enter your name to play again.');
+        const error = new Error('Your session expired. Log in to play again.');
         error.data = { code: 'AUTH_REQUIRED' };
         return next(error);
       }
@@ -162,7 +174,7 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
         if (Date.now() - windowStart > 10_000) { windowStart = Date.now(); actions = 0; }
         if (++actions > 40) throw new GameError('Slow down a little and try again.');
         if (!await store.authenticate(socket.data.token)) {
-          ack({ ok: false, code: 'AUTH_REQUIRED', error: 'Your session expired. Enter your name to play again.' });
+          ack({ ok: false, code: 'AUTH_REQUIRED', error: 'Your session expired. Log in to play again.' });
           socket.disconnect(true);
           return;
         }

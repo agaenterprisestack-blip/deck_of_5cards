@@ -1,9 +1,17 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
 const publicUser = (user) => ({ id: user.id, name: user.name });
+const deriveKey = promisify(scrypt);
+const usernameKey = (name) => name.trim().normalize('NFKC').toLowerCase();
+const passwordKey = (password, salt) => deriveKey(password, salt, 64, { N: 16384, r: 8, p: 1 });
+const dummySalt = randomBytes(16).toString('hex');
+export class AccountError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
 
 export async function createStore({ databaseUrl, sslMode = 'disable', production = false } = {}) {
   if (production && !databaseUrl) throw new Error('DATABASE_URL is required in production.');
@@ -20,8 +28,49 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
   }
   const sessions = new Map();
   const matches = new Map();
+  const accounts = new Map();
   return {
     persistent: Boolean(pool),
+    async register(name, password) {
+      const key = usernameKey(name);
+      const salt = randomBytes(16).toString('hex');
+      const hash = `${salt}:${(await passwordKey(password, salt)).toString('hex')}`;
+      const user = { id: randomUUID(), name: name.trim().normalize('NFKC') };
+      if (pool) {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('INSERT INTO players (id,name) VALUES ($1,$2)', [user.id, user.name]);
+          await client.query('INSERT INTO accounts (username_key,player_id,password_hash) VALUES ($1,$2,$3)', [key, user.id, hash]);
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK');
+          if (error.code === '23505' && error.constraint === 'accounts_pkey') {
+            throw new AccountError('That username is already taken. Choose another.', 409);
+          }
+          throw error;
+        } finally { client.release(); }
+      } else {
+        if (accounts.has(key)) throw new AccountError('That username is already taken. Choose another.', 409);
+        accounts.set(key, { user, hash });
+      }
+      return publicUser(user);
+    },
+    async login(name, password) {
+      let account;
+      if (pool) {
+        const { rows } = await pool.query(
+          'SELECT p.id,p.name,a.password_hash FROM accounts a JOIN players p ON p.id=a.player_id WHERE a.username_key=$1',
+          [usernameKey(name)]);
+        if (rows[0]) account = { user: publicUser(rows[0]), hash: rows[0].password_hash };
+      } else account = accounts.get(usernameKey(name));
+      const [salt, hash] = account ? account.hash.split(':') : [dummySalt, '00'.repeat(64)];
+      const actual = await passwordKey(password, salt);
+      if (!timingSafeEqual(actual, Buffer.from(hash, 'hex')) || !account) {
+        throw new AccountError('Incorrect username or password.', 401);
+      }
+      return publicUser(account.user);
+    },
     async createPlayer(name) {
       const user = { id: randomUUID(), name };
       if (pool) {

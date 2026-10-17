@@ -12,13 +12,13 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173`. Enter a name in **three separate browser tabs** (each tab has its own session), create a table, and join with its six-character code. No email, password, signup, or login is needed. The host can deal once three players have joined. To test more seats, choose up to ten when creating a table.
+Open `http://localhost:5173`. Choose **Log in**, then **Sign up** to create a username and password. Register three different players in **three separate browser tabs** (each tab has its own session), create a table, and join with its six-character code. The host can deal once three players have joined. To test more seats, choose up to ten when creating a table.
 
 Without `DATABASE_URL`, the server explicitly runs in **development memory mode**: player sessions and completed history disappear on restart. A banner appears in the UI. No external service is needed to try the game.
 
 ## What is included
 
-- Name-only guest entry with revocable, seven-day opaque sessions held in tab-scoped storage. Names are display labels, not unique account identifiers.
+- Username/password sign-up and login with case-insensitive unique usernames and revocable, seven-day opaque sessions held in tab-scoped storage. Passwords are salted and hashed with Node's asynchronous scrypt; plaintext passwords are never stored.
 - Multiple tables, configurable capacity and house rules, invitation codes, host controls.
 - Server-authoritative turns and scoring; clients receive only their own private hand.
 - Live presence, reconnecting seats, private table chat, and a 30-second turn timer that automatically advances play.
@@ -73,11 +73,11 @@ DATABASE_SSL=disable
 
 For hosted databases requiring verified TLS, use `DATABASE_SSL=verify-full` and the connection configuration supplied by your provider. Do not disable certificate verification. Schema initialization runs on startup using [server/schema.sql](server/schema.sql); the database user needs permission to create tables and indexes. No database credentials are shipped to the browser.
 
-Guest player identities, sessions, final scores, and completed match round histories are persisted. Matches are saved transactionally and idempotently; a persistence failure is shown as an error rather than reporting a successful finish.
+Registered accounts, sessions, final scores, and completed match round histories are persisted. Matches are saved transactionally and idempotently; a persistence failure is shown as an error rather than reporting a successful finish.
 
 **Active tables, in-progress scores, and chat are in process memory.** Run exactly one backend instance. A restart resets active tables, but PostgreSQL retains players and completed matches. Scaling to multiple instances or preserving in-progress matches requires a shared room store and a Socket.IO adapter; those are not implemented.
 
-Seats remain reserved during active matches, even if a player disconnects. Reconnect in the same tab with its existing session to resume. Entering the same name in a new session cannot recover another player's seat or history. Automatic draws continue while anyone at the table is connected and stop while everyone is offline; an overdue turn advances when someone reconnects. A completely offline table is removed after 30 minutes without room activity. Players can leave waiting, completed, or aborted tables. Hosts cannot eject players or inspect their hands.
+Seats remain reserved during active matches, even if a player disconnects. Reconnect with an existing session or log in with the account's password to resume the same player profile and reserved seat. A username alone cannot recover a seat or history. Automatic draws continue while anyone at the table is connected and stop while everyone is offline; an overdue turn advances when someone reconnects. A completely offline table is removed after 30 minutes without room activity. Players can leave waiting, completed, or aborted tables. Hosts cannot eject players or inspect their hands.
 
 ## Production build
 
@@ -95,11 +95,13 @@ Express serves the built frontend and API on `PORT` (default `3001`). Set `NODE_
 3. Set **Vercel's build-time** `VITE_SERVER_URL` to the Railway HTTPS URL (no trailing slash), then rebuild.
 4. Set Railway's `CLIENT_ORIGIN` to the exact Vercel HTTPS origin. Multiple explicitly trusted origins can be comma-separated. Do not use `*`.
 5. If exactly one trusted reverse proxy fronts Express, set `TRUST_PROXY=1` for correct rate-limit IP handling. Do not enable this for an untrusted/direct deployment.
-6. Verify `GET /api/health` returns `storage: "postgresql"` and connect three guest players to a test table.
+6. Verify `GET /api/health` returns `storage: "postgresql"` and connect three registered players to a test table.
 
-No cloud resources are automatically provisioned or deployed. Hosting credentials and a database must be supplied by the deployer. Sessions are kept in tab-scoped `sessionStorage`; refresh restores the player, seat, and available history. Closing the tab, ending the session, or its expiry requires entering a name for a new player session. Another person typing the same name receives a distinct identity and cannot access previous private history. Ending a session revokes its token and disconnects sockets using it. Names are not verified identities, so avoid using them as proof of who a player is.
+No cloud resources are automatically provisioned or deployed. Hosting credentials and a database must be supplied by the deployer. Sessions are kept in tab-scoped `sessionStorage`; refresh restores the player, seat, and available history. Closing the tab, logging out, or session expiry requires logging in again with the username and password. Logging out revokes that session's token and disconnects sockets using it.
 
-Existing databases are upgraded on startup to allow players without email/password fields; previous player IDs and completed histories are preserved. Legacy login/signup endpoints are no longer available. Existing valid session tokens still work, but a lost or expired token cannot be recovered by name.
+Authentication uses `POST /api/signup` and `POST /api/login` with `{ name, password }`. Usernames are trimmed, Unicode compatibility-normalized, and compared case-insensitively; use 1–24 letters, numbers, spaces, hyphens, or underscores. Passwords must contain 10–128 characters and are not trimmed. A database primary key prevents duplicate usernames even during concurrent registration. Both endpoints share an IP-based authentication rate limit and never return password hashes. Password recovery is not available yet; keep your password safe.
+
+On startup, existing databases gain a separate `accounts` table. Old guest player IDs and completed histories remain unchanged, but old guest sessions are revoked. Guest names are not reserved: a newly registered account may use one, but gets a new player ID and cannot claim the guest's profile, history, or seat. Existing accounts and their valid sessions survive restarts. The old `/api/guest` endpoint is disabled.
 
 ## Validation
 
@@ -110,6 +112,6 @@ npm run build
 npm run check
 ```
 
-Node's built-in test runner covers deck sizes for all player counts, legal/illegal combinations, private views, turn ownership, recycling/exhaustion, show/clash/beaten-show scoring, elimination, tied wins, and immutable round history. Integration tests start an actual HTTP/Socket.IO server on an ephemeral port and exercise name-only entry, validation, same-name identity/history isolation, room capacity, hidden hands, stale actions, chat isolation, reconnection, final history, leaderboards, and session revocation.
+Node's built-in test runner covers deck sizes for all player counts, legal/illegal combinations, private views, turn ownership, recycling/exhaustion, show/clash/beaten-show scoring, elimination, tied wins, and immutable round history. Integration tests start an actual HTTP/Socket.IO server on an ephemeral port and exercise sign-up/login, validation, duplicate and concurrent username rejection, password verification, guest/account isolation, room capacity, hidden hands, stale actions, chat isolation, reconnection, final history, leaderboards, and session revocation.
 
 The automated integration suite uses the explicit in-memory store; production PostgreSQL connectivity and cloud configuration must be verified against your own database.

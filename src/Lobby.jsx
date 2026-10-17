@@ -31,7 +31,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
     <div className="lobby-layout">
       <section className="tables-section">
         <div className="section-heading"><div><span className="eyebrow">FIND YOUR PEOPLE</span><h2>Take a seat<span className="count-pill">{joinable.length}</span></h2></div>
-          <div className={`connection-label ${connected ? '' : 'offline'}`}><span />{connected ? 'Live tables' : user ? 'Connecting' : 'Enter your name to join'}</div>
+          <div className={`connection-label ${connected ? '' : 'offline'}`}><span />{connected ? 'Live tables' : user ? 'Connecting' : 'Log in to join'}</div>
         </div>
         <div className="table-toolbar"><div className="filter-tabs">
           <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>All tables</button>
@@ -48,7 +48,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
           {!filtered.length && <div className="empty-tables">
             <div className="empty-card-stack"><Card small back /><Card small card={{ rank: 1, suit: 'spades' }} /></div>
             <h3>{user ? 'Be the first at the table.' : 'Your next card night starts here.'}</h3>
-            <p>{user ? 'Create a room, share the code, and get your people together.' : 'Enter your name, start a table, and invite a few familiar faces.'}</p>
+            <p>{user ? 'Create a room, share the code, and get your people together.' : 'Create an account, start a table, and invite a few familiar faces.'}</p>
             <button className="text-button" onClick={user ? onCreate : onSignIn}>{user ? 'Start a new table' : 'Get in on the game'} <Icon name="arrow" size={16} /></button>
           </div>}
         </div>

@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS players (
   password_hash TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
--- Preserve existing player IDs and match history while allowing name-only guests.
+-- Preserve historical guest rows; registered credentials live in accounts.
 ALTER TABLE players ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE players ALTER COLUMN password_hash DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS sessions (
@@ -14,6 +14,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS accounts (
+  username_key TEXT PRIMARY KEY,
+  player_id UUID NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL
+);
+-- Guest profiles remain historical records, not claimable accounts.
+DELETE FROM sessions WHERE player_id NOT IN (SELECT player_id FROM accounts);
 CREATE TABLE IF NOT EXISTS matches (
   id UUID PRIMARY KEY,
   room_code TEXT NOT NULL,

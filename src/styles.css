@@ -863,6 +863,9 @@ body { background: #f8f7f7; }
 .table-experience .game-heading { margin: 0 0 12px; }
 .table-experience .game-heading h1 { color: #b8e4b5; }
 .table-experience .game-heading .eyebrow { color: #e0c49e; }
+.game-page.table-experience .game-heading-actions .table-leave { min-height: 44px; min-width: 82px; padding: 8px 12px; font-size: 12px; color: #292326; background: #fff; border-color: #fff; }
+.game-page.table-experience .game-heading-actions .table-leave:hover:not(:disabled) { background: #ffe1e6; border-color: #d9273f; color: #9c162a; }
+.game-page.table-experience .game-heading-actions .table-leave:focus-visible { outline: 3px solid #e6b980; outline-offset: 3px; }
 .table-experience .game-main { display: block; }
 .table-experience .felt-table {
   min-height: 620px;
@@ -1072,3 +1075,6 @@ body { background: #f8f7f7; }
   .table-experience.game-outcome .waiting-host { font-size: 10px; }
   .table-experience.game-outcome .table-text-button { min-height: 44px; padding: 4px; font-size: 9px; }
 }
+.auth-page { width: min(440px, 100%); margin: 32px auto; padding: 28px; border: 1px solid #dcc8cc; border-radius: 16px; background: #fff; }
+.auth-page h1 { margin: 12px 0; }
+.auth-page > p { margin-bottom: 24px; }

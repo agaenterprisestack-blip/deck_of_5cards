@@ -200,7 +200,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               sendGameAction('game:abort', { revision: room.revision }, event.currentTarget);
             }
           }}><Icon name="close" size={16} /> Abort game</button>}
-        {(isWaiting || isFinished || isAborted) && <button className="button button-outline button-small" disabled={busy || !connected} onClick={() => send('room:leave', {})}><Icon name="exit" size={16} /> Leave</button>}
+        {(isWaiting || isFinished || isAborted) && <button className="button button-outline button-small table-leave" disabled={busy || !connected} onClick={() => send('room:leave', {})}><Icon name="exit" size={16} /> Leave</button>}
       </div>
     </div>
     {!connected && <div className="inline-warning" role="status">Connection interrupted. Reconnecting automatically; your seat is reserved.</div>}
