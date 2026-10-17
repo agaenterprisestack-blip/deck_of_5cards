@@ -1,16 +1,23 @@
 import { useState } from 'react';
 import { Avatar, Card, Icon, ruleLabels } from './components.jsx';
 
-export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connected, onSignIn }) {
+export const heroHeadlines = [
+  { first: 'A little luck.', second: 'A lot', emphasis: 'less.' },
+  { first: 'Low scores.', second: 'High', emphasis: 'spirits.' },
+  { first: 'Big laughs.', second: 'Small', emphasis: 'scores.' },
+];
+
+export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connected, onSignIn, headlineIndex = 0 }) {
   const [code, setCode] = useState('');
   const [filter, setFilter] = useState('all');
+  const headline = heroHeadlines[headlineIndex];
   const joinable = rooms.filter((room) => room.status === 'waiting');
   const filtered = joinable.filter((room) => filter !== 'open' || room.count < room.capacity);
   return <>
     <section className="hero">
       <div className="hero-text">
         <span className="eyebrow"><span className="tiny-diamond">♦</span> GOOD COMPANY. GREAT HANDS.</span>
-        <h1>A little luck.<br />A lot <em>less.</em></h1>
+        <h1>{headline.first}<br />{headline.second} <em>{headline.emphasis}</em></h1>
         <p>Bring your friends. Play your cards.<br className="desktop-break" /> Keep your score low and the good times rolling.</p>
         <button className="button button-dark" onClick={user ? onCreate : onSignIn}>
           <Icon name="plus" size={18} /> {user ? 'Create a table' : 'Let’s play'} <Icon name="arrow" size={18} />

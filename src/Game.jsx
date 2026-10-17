@@ -255,9 +255,9 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
             {isWaiting && Array.from({ length: Math.max(0, 2 - room.players.length) }, (_, index) => <div className="opponent empty-seat" style={{ '--seat-x': `${seatPositions[opponents.length + index][0]}%`, '--seat-y': `${seatPositions[opponents.length + index][1]}%` }} key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
           </div>
           <div className="table-center">
-            {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < 2 ? 'Waiting for 1 more player to begin.' : 'Ready to begin. The host can deal when everyone has joined.'}</p>
-              {isHost ? <button className="button button-accent" disabled={room.players.length < 2 || busy || !connected}
-                onClick={(event) => sendGameAction('game:start', { revision: room.revision }, event.currentTarget)}><Icon name="cards" size={18} /> Deal the cards</button> : <span className="waiting-host">Waiting for the host to deal…</span>}
+            {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < 2 ? 'Waiting for 1 more player to begin.' : 'Ready to begin. Any seated player can deal the cards.'}</p>
+              <button className="button button-accent" disabled={room.players.length < 2 || busy || !connected}
+                onClick={(event) => sendGameAction('game:start', { revision: room.revision }, event.currentTarget)}><Icon name="cards" size={18} /> Deal the cards</button>
               <span className="table-player-count">{room.players.length} / {room.capacity} players at the table</span>
             </div> : isAborted ? <div className="finished-center"><span className="eyebrow">MATCH CANCELLED</span>
               <h2>This game was aborted.</h2><p>{room.lastAction}</p>

@@ -626,17 +626,26 @@ test('room views never reveal opponent hands during an active round', () => {
   assert.equal('drawPile' in view, false);
   assert.equal('matchId' in view, false);
 });
-test('host restrictions, full table, late join, and minimum player count are enforced', () => {
+test('table membership, full table, late join, and minimum player count are enforced', () => {
   const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { capacity: 3 });
   assert.throws(() => startRound(room, 'p0'), /2 players/);
   joinRoom(room, { id: 'p1', name: 'Player 1' });
   joinRoom(room, { id: 'p2', name: 'Player 2' });
   assert.throws(() => joinRoom(room, { id: 'p3', name: 'Player 3' }), /full/);
-  assert.throws(() => startRound(room, 'p1'), /host/);
-  startRound(room, 'p0');
+  assert.throws(() => startRound(room, 'p3'), /Join this table/);
+  startRound(room, 'p1');
   assert.throws(() => joinRoom(room, { id: 'p3', name: 'Player 3' }), /already started/);
   assert.throws(() => startRound(room, 'p0'), /cannot start/);
   assert.throws(() => finishMatch(room, 'p0'), /current round/);
+});
+test('a non-host can deal once two players have joined', () => {
+  const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' });
+  joinRoom(room, { id: 'p1', name: 'Player 1' });
+  startRound(room, 'p1');
+  assert.equal(room.status, 'playing');
+  assert.equal(room.round, 1);
+  assert.equal(room.hostId, 'p0');
+  assert.ok(room.players.every((player) => player.hand.length === 5));
 });
 test('finishing between rounds selects all tied lowest-score active players', () => {
   const room = fixture();

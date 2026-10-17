@@ -12,7 +12,7 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173`. Choose **Log in**, then **Sign up** to create a username and password. Register two different players in **two separate browser tabs** (each tab has its own session), create a table, and join with its six-character code. The host can deal once two players have joined. Choose a capacity from two to ten when creating a table; two or three players use one deck.
+Open `http://localhost:5173`. Choose **Log in**, then **Sign up** to create a username and password. Register two different players in **two separate browser tabs** (each tab has its own session), create a table, and join with its six-character code. Any seated player can press **Deal the cards** once at least two players have joined; there is no need to wait for the host. Choose a capacity from two to ten when creating a table; two or three players use one deck.
 
 Without `DATABASE_URL`, the server explicitly runs in **development memory mode**: player sessions and completed history disappear on restart. A banner appears in the UI. No external service is needed to try the game.
 
@@ -21,6 +21,7 @@ Without `DATABASE_URL`, the server explicitly runs in **development memory mode*
 - Username/password sign-up and login with case-insensitive unique usernames and revocable, seven-day opaque sessions held in tab-scoped storage. Passwords are salted and hashed with Node's asynchronous scrypt; plaintext passwords are never stored.
 - Multiple tables, configurable capacity and house rules, invitation codes, host controls. Any card and Same number are checked by default; Rummy and Continuation are unchecked and can be enabled by the table creator.
 - Server-authoritative turns and scoring; clients receive only their own private hand.
+- The lobby headline cycles through three messages after each successful login, sign-up, or guest entry. The selected message stays the same during navigation and reloads in that browser tab.
 - Live presence, reconnecting seats, private table chat, and a 30-second turn timer that automatically advances play.
 - Each player starts with 5 lives for the whole match. Every missed turn costs one life; the fifth timeout eliminates the player into spectator mode without removing their seat or chat access. Lives do not reset after a successful turn, reconnect, or new round. The last active player wins. Remaining lives appear by each player, above your cards, and in the scoreboard.
 - Round reveals, cumulative scores, elimination, shared wins, and match completion.

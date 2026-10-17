@@ -116,7 +116,7 @@ export function leaveRoom(room, userId) {
 }
 
 export function startRound(room, userId) {
-  if (room.hostId !== userId) throw new GameError('Only the host can deal.');
+  if (!room.players.some((player) => player.id === userId && !player.left)) throw new GameError('Join this table before dealing.');
   if (!['waiting', 'roundEnd'].includes(room.status)) throw new GameError('A round cannot start now.');
   const active = room.players.filter((player) => !player.eliminated);
   if (active.length < 2) throw new GameError('At least 2 players are needed to start a round.');

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { request, SERVER_URL } from './api.js';
 import { Avatar, Icon, Logo, Modal, RulesContent, ruleLabels } from './components.jsx';
-import Lobby, { History, Leaderboard } from './Lobby.jsx';
+import Lobby, { History, Leaderboard, heroHeadlines } from './Lobby.jsx';
 import Game from './Game.jsx';
 
 function AuthForm({ signup, onSwitch, onAuthenticated }) {
@@ -63,6 +63,10 @@ function CreateForm({ send, busy, onDone }) {
 }
 
 export default function App() {
+  const [headlineIndex, setHeadlineIndex] = useState(() => {
+    const saved = Number(sessionStorage.getItem('five-cards-headline'));
+    return Number.isInteger(saved) && saved >= 0 && saved < heroHeadlines.length ? saved : 0;
+  });
   const [token, setToken] = useState(() => sessionStorage.getItem('five-cards-token') || '');
   const [user, setUser] = useState(null);
   const [restoring, setRestoring] = useState(Boolean(token));
@@ -231,14 +235,17 @@ export default function App() {
         <AuthForm key={page} signup={page === 'signup'} onSwitch={() => setPage(page === 'signup' ? 'login' : 'signup')}
           onAuthenticated={({ user: currentUser, token: newToken }) => {
             sessionStorage.setItem('five-cards-token', newToken); setToken(newToken); setUser(currentUser);
+            const nextHeadline = (headlineIndex + 1) % heroHeadlines.length;
+            sessionStorage.setItem('five-cards-headline', String(nextHeadline));
+            setHeadlineIndex(nextHeadline);
             setPage('play'); notify(`Welcome to the table, ${currentUser.name}.`, 'success');
           }} />
       </section> : page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} />
-        : <Lobby user={user} rooms={rooms} connected={connected} onCreate={() => setModal('create')} onJoin={(code) => send('room:join', { code })} onRules={() => setModal('rules')} onSignIn={signIn} />
+        : <Lobby user={user} rooms={rooms} connected={connected} onCreate={() => setModal('create')} onJoin={(code) => send('room:join', { code })} onRules={() => setModal('rules')} onSignIn={signIn} headlineIndex={headlineIndex} />
         : dataError ? <section className="data-page"><h2>Couldn’t load this page.</h2><p role="alert" className="form-error">{dataError}</p><button className="button button-dark" onClick={() => setRefresh((value) => value + 1)}>Try again</button></section>
           : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <History entries={data} user={user} loading={dataLoading} />}
     </main>
-    <footer className="site-footer"><div><Logo /><span>A little less. A lot more fun.</span></div><p>Made for the love of the game. <span>♠ ♥ ♣ ♦</span></p><button onClick={() => setModal('rules')}>House rules <Icon name="arrow" size={14} /></button></footer>
+    <footer className="site-footer"><div><Logo /><span>designed by GpTechstack...</span></div><p>Made for the love of the game. <span>♠ ♥ ♣ ♦</span></p><button onClick={() => setModal('rules')}>House rules <Icon name="arrow" size={14} /></button></footer>
     {modal === 'create' && <Modal title="Make it your table." subtitle="A name, a few rules, and your favorite people." notification={toast} onClose={() => setModal(null)}><CreateForm send={send} busy={busy} onDone={() => { setModal(null); setPage('play'); }} /></Modal>}
     {modal === 'rules' && <Modal title="The art of keeping it low." subtitle="Your pocket guide to a very good card night." notification={toast} onClose={() => setModal(null)}><RulesContent /></Modal>}
     {toast && !modal && <div className={`toast toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'error' ? 'chat' : 'check'} size={19} /><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><Icon name="close" size={16} /></button></div>}

@@ -624,8 +624,8 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   assert.equal((await players[0].emit('room:create', options)).ok, false);
   await until(() => players[0].state.room.players.length === 3);
   let revision = players[0].state.room.revision;
-  assert.equal((await players[1].emit('game:start', { revision })).ok, false);
-  assert.equal((await players[0].emit('game:start', { revision })).ok, true);
+  assert.equal((await players[1].emit('game:start', { revision })).ok, true);
+  assert.equal((await players[0].emit('game:start', { revision })).ok, false);
   await until(() => players.every((player, index) => index === 3 || player.state.room?.status === 'playing'));
   const startDeadline = players[0].state.room.turnDeadline;
   assert.ok(startDeadline - Date.now() <= 30_000 && startDeadline - Date.now() > 28_000);
