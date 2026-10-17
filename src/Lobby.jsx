@@ -15,7 +15,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
         <button className="button button-dark" onClick={user ? onCreate : onSignIn}>
           <Icon name="plus" size={18} /> {user ? 'Create a table' : 'Let’s play'} <Icon name="arrow" size={18} />
         </button>
-        <div className="hero-details"><span><Icon name="users" size={15} /> 3–10 players</span><span className="detail-dot" /><span>Free to play. Made for friends.</span></div>
+        <div className="hero-details"><span><Icon name="users" size={15} /> 2–10 players</span><span className="detail-dot" /><span>Free to play. Made for friends.</span></div>
       </div>
       <div className="hero-art" aria-hidden="true">
         <div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" />
@@ -48,7 +48,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
           {!filtered.length && <div className="empty-tables">
             <div className="empty-card-stack"><Card small back /><Card small card={{ rank: 1, suit: 'spades' }} /></div>
             <h3>{user ? 'Be the first at the table.' : 'Your next card night starts here.'}</h3>
-            <p>{user ? 'Create a room, share the code, and get your people together.' : 'Create an account, start a table, and invite a few familiar faces.'}</p>
+            <p>{user ? 'Create a room, share the code, and get your people together.' : 'Log in or continue as a guest, start a table, and invite a few familiar faces.'}</p>
             <button className="text-button" onClick={user ? onCreate : onSignIn}>{user ? 'Start a new table' : 'Get in on the game'} <Icon name="arrow" size={16} /></button>
           </div>}
         </div>
@@ -81,7 +81,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
 }
 
 export function Leaderboard({ entries, loading }) {
-  return <section className="data-page"><span className="eyebrow">A LITTLE FRIENDLY COMPETITION</span><h1>The low-score club.</h1><p className="muted">Completed matches. Bragging rights earned, never bought.</p>
+  return <section className="data-page"><span className="eyebrow">A LITTLE FRIENDLY COMPETITION</span><h1>The low-score club.</h1><p className="muted">Registered players only. Completed matches against guests still count for registered players.</p>
     {loading ? <p className="loading-state" role="status">Loading the leaderboard…</p> : entries.length ? <div className="leaderboard-list">
       <div className="leaderboard-row leaderboard-heading"><span>Rank</span><span>Player</span><span>Wins</span><span>Played</span><span>Avg. score</span></div>
       {entries.map((entry, index) => <div className="leaderboard-row" key={entry.id}><b className="rank-number">{String(index + 1).padStart(2, '0')}</b><span className="leaderboard-name"><Avatar name={entry.name} index={index} small /><b>{entry.name}</b></span><b>{entry.wins}</b><span>{entry.played}</span><span>{entry.average}</span></div>)}
@@ -90,7 +90,7 @@ export function Leaderboard({ entries, loading }) {
 }
 
 export function History({ entries, user, loading }) {
-  return <section className="data-page"><span className="eyebrow">YOUR CORNER OF THE TABLE</span><h1>Good to see you, {user.name}.</h1><p className="muted">Your last 20 completed matches, all in one place.</p>
+  return <section className="data-page"><span className="eyebrow">YOUR CORNER OF THE TABLE</span><h1>Good to see you, {user.name}.</h1><p className="muted">{user.isGuest ? 'Guest session: you are not ranked on the leaderboard. Signing out ends access to this guest profile.' : 'Your last 20 completed matches, all in one place.'}</p>
     {loading ? <p className="loading-state" role="status">Loading your matches…</p> : !entries.length ? <div className="data-empty"><Icon name="clock" size={36} /><h3>Every player starts somewhere.</h3><p>Your completed matches will appear here.</p></div> :
       <div className="history-list">{entries.map((entry) => <article className="history-item" key={entry.id}>
         <span className={`history-result ${entry.won ? 'won' : ''}`}><Icon name={entry.won ? 'trophy' : 'cards'} /></span>

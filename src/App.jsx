@@ -29,29 +29,35 @@ function AuthForm({ signup, onSwitch, onAuthenticated }) {
       <button className="button button-dark button-full" disabled={busy}>{busy ? 'One moment…' : signup ? 'Create account' : 'Log in'}<Icon name="arrow" size={17} /></button>
       <p className="fine-print">{signup ? 'Usernames are unique regardless of capitalization. Use a password of 10–128 characters. Keep it safe: password recovery is not available yet.' : 'Log in to recover your player profile, scores, and reserved seat.'}</p>
       <button type="button" className="text-button" disabled={busy} onClick={onSwitch}>{signup ? 'Already have an account? Log in' : 'New to the table? Sign up'}</button>
+      <button type="button" className="button button-outline button-full" disabled={busy} onClick={async () => {
+        setBusy(true); setError('');
+        try { onAuthenticated(await request('/guest', { method: 'POST' })); }
+        catch (failure) { setError(failure.message); }
+        finally { setBusy(false); }
+      }}>Continue as guest</button>
+      <p className="fine-print">No account needed. You get an automatic guest name and can play normally, but guests do not appear on the leaderboard. After signing out, your guest identity cannot be recovered.</p>
     </form>
   </>;
 }
 
 function CreateForm({ send, busy, onDone }) {
-  const [rules, setRules] = useState({ anyCard: true, sameNumber: true, rummy: true, continuation: true });
+  const [rules, setRules] = useState({ anyCard: true, sameNumber: true, rummy: false, continuation: false });
   const [capacity, setCapacity] = useState(5);
-  const [pointsToEliminate, setPointsToEliminate] = useState(201);
   return <form className="form-stack" onSubmit={async (event) => {
     event.preventDefault();
     const name = new FormData(event.currentTarget).get('name');
+    const pointsToEliminate = Number(new FormData(event.currentTarget).get('pointsToEliminate'));
     if (await send('room:create', { name, capacity, pointsToEliminate, rules })) onDone();
   }}>
     <label>Table name<input name="name" placeholder="The usual suspects" minLength={2} maxLength={36} required autoFocus /></label>
-    <label>Seats at the table<span className="capacity-picker">{Array.from({ length: 8 }, (_, i) => i + 3).map((count) =>
+    <label>Seats at the table<span className="capacity-picker">{Array.from({ length: 9 }, (_, i) => i + 2).map((count) =>
       <button key={count} type="button" aria-pressed={capacity === count} className={capacity === count ? 'active' : ''} onClick={() => setCapacity(count)}>{count}</button>)}</span></label>
-    <label>Points to eliminate<span className="points-picker">{[101, 201, 401, 1001].map((points) =>
-      <button key={points} type="button" aria-pressed={pointsToEliminate === points}
-        className={pointsToEliminate === points ? 'active' : ''} onClick={() => setPointsToEliminate(points)}>{points}</button>)}</span></label>
+    <label>Points to eliminate<input name="pointsToEliminate" type="number" min={50} max={1001} step={1} defaultValue={201} required aria-describedby="points-help" /></label>
+    <p id="points-help" className="fine-print">Enter a whole number from 50 to 1,001. Players are eliminated when their score reaches this limit.</p>
     <fieldset className="rule-options"><legend>Your house rules</legend>{Object.entries(rules).map(([rule, enabled]) => <label key={rule}>
       <span>{ruleLabels[rule]}</span><input type="checkbox" checked={enabled} onChange={(event) => setRules((previous) => ({ ...previous, [rule]: event.target.checked }))} />
     </label>)}</fieldset>
-    <p className="fine-print">At least 3 players to begin. The deck count adjusts automatically. Share the code after creating your table.</p>
+    <p className="fine-print">At least 2 players to begin. The deck count adjusts automatically. Share the code after creating your table.</p>
     <button className="button button-dark button-full" disabled={busy || !Object.values(rules).some(Boolean)}>{busy ? 'Setting the table…' : 'Create my table'}<Icon name="arrow" size={17} /></button>
   </form>;
 }
@@ -221,7 +227,7 @@ export default function App() {
       {(page === 'login' || page === 'signup') && !user ? <section className="auth-page">
         <span className="eyebrow">YOUR SEAT AT THE TABLE</span>
         <h1>{page === 'signup' ? 'Create your account.' : 'Welcome back.'}</h1>
-        <p>{page === 'signup' ? 'One unique name. Your own cards and scores.' : 'Log in to join your friends.'}</p>
+        <p>{page === 'signup' ? 'One unique name. Your own cards and scores.' : 'Log in or continue as a guest to join your friends.'}</p>
         <AuthForm key={page} signup={page === 'signup'} onSwitch={() => setPage(page === 'signup' ? 'login' : 'signup')}
           onAuthenticated={({ user: currentUser, token: newToken }) => {
             sessionStorage.setItem('five-cards-token', newToken); setToken(newToken); setUser(currentUser);

@@ -11,7 +11,7 @@ import { Server } from 'socket.io';
 import { z } from 'zod';
 import { AccountError } from './store.js';
 import {
-  GameError, createRoom, joinRoom, startRound, playTurn, expireTurn, showHand, abortMatch, roomView,
+  GameError, createRoom, joinRoom, leaveRoom, startRound, playTurn, expireTurn, showHand, abortMatch, roomView,
 } from './game.js';
 
 const usernameSchema = z.string().trim().normalize('NFKC').min(1, 'Enter your username.')
@@ -21,8 +21,8 @@ const signupSchema = loginSchema.extend({ password: z.string().min(10, 'Use at l
 const codeSchema = z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z2-9]{6}$/) });
 const createSchema = z.object({
   name: z.string().trim().min(2).max(36),
-  capacity: z.number().int().min(3).max(10),
-  pointsToEliminate: z.union([z.literal(101), z.literal(201), z.literal(401), z.literal(1001)]).default(201),
+  capacity: z.number().int().min(2).max(10),
+  pointsToEliminate: z.number().int().min(50).max(1001).default(201),
   rules: z.object({
     sameNumber: z.boolean(), rummy: z.boolean(), anyCard: z.boolean(), continuation: z.boolean(),
   }).refine((rules) => Object.values(rules).some(Boolean), 'Enable at least one rule.'),
@@ -39,6 +39,7 @@ const bearer = (request) => request.headers.authorization?.startsWith('Bearer ')
   ? request.headers.authorization.slice(7) : '';
 const TURN_MS = 30_000;
 const ROUND_BREAK_MS = 15_000;
+const WAITING_TABLE_MS = 45 * 60_000;
 
 export function createApp({ store, clientOrigin = 'http://localhost:5173', production = false, trustProxy = false }) {
   const app = express();
@@ -70,6 +71,12 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
       }
     });
   }
+  app.post('/api/guest', authLimiter, async (_request, response) => {
+    response.set('Cache-Control', 'no-store');
+    const user = await store.createPlayer(`Guest-${randomUUID().replaceAll('-', '').slice(0, 18)}`);
+    const token = await store.session(user);
+    response.status(201).json({ user, token });
+  });
   const requireUser = async (request, response, next) => {
     const user = await store.authenticate(bearer(request));
     if (!user) return response.status(401).json({ error: 'Your session ended. Log in to play again.' });
@@ -90,9 +97,9 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
   const connections = new Map();
   const connectedIds = () => new Set([...io.sockets.sockets.values()]
     .filter((socket) => socket.data.code).map((socket) => socket.data.user.id));
-  const findRoom = (userId) => [...rooms.values()].find((room) => room.players.some((player) => player.id === userId));
+  const findRoom = (userId) => [...rooms.values()].find((room) => room.players.some((player) => player.id === userId && !player.left));
   const lobbyView = () => [...rooms.values()].map((room) => ({
-    code: room.code, name: room.name, capacity: room.capacity, count: room.players.length,
+    code: room.code, name: room.name, capacity: room.capacity, count: room.players.filter((player) => !player.left).length,
     status: room.status, host: room.players.find((p) => p.id === room.hostId)?.name,
     rules: room.rules,
   }));
@@ -190,7 +197,7 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     });
     const currentRoom = () => {
       const room = rooms.get(socket.data.code);
-      if (!room || !room.players.some((p) => p.id === user.id)) throw new GameError('Join a table first.');
+      if (!room || !room.players.some((p) => p.id === user.id && !p.left)) throw new GameError('Join a table first.');
       return room;
     };
     const requireRevision = (revision) => {
@@ -225,12 +232,11 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     });
     handle('room:leave', z.object({}), async () => {
       const room = currentRoom();
-      if (!['waiting', 'finished', 'aborted'].includes(room.status)) throw new GameError('You cannot leave an active match. Your seat is kept for reconnecting.');
-      if (room.players.length === 1) rooms.delete(room.code);
-      else await changeRoom(room, (next) => {
-        next.players = next.players.filter((p) => p.id !== user.id);
-        if (next.hostId === user.id) next.hostId = next.players[0].id;
-      }, { resetTurn: false });
+      if (locks.has(room.code)) throw new GameError('The table is updating. Please try again.');
+      if (room.players.filter((player) => !player.left).length === 1) rooms.delete(room.code);
+      else await changeRoom(room, (next) => leaveRoom(next, user.id), {
+        resetTurn: room.status === 'playing' && room.turnId === user.id,
+      });
       for (const peer of io.sockets.sockets.values()) {
         if (peer.data.user.id === user.id) {
           peer.data.code = null;
@@ -275,8 +281,19 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
   const timer = setInterval(() => {
     const online = connectedIds();
     for (const room of rooms.values()) {
-      const anyoneOnline = room.players.some((p) => online.has(p.id));
-      if (!anyoneOnline && Date.now() - room.updatedAt > 30 * 60_000 && !locks.has(room.code)) {
+      const anyoneOnline = room.players.some((p) => !p.left && online.has(p.id));
+      if (room.status === 'waiting' && Date.now() - room.createdAt >= WAITING_TABLE_MS && !locks.has(room.code)) {
+        rooms.delete(room.code);
+        for (const socket of io.sockets.sockets.values()) {
+          if (socket.data.code !== room.code) continue;
+          socket.data.code = null;
+          socket.emit('room', null);
+          socket.emit('server:error', { error: 'This table expired because the match did not start within 45 minutes. You can create or join another table.' });
+        }
+        broadcastLobby();
+        continue;
+      }
+      if (room.status !== 'waiting' && !anyoneOnline && Date.now() - room.updatedAt > 30 * 60_000 && !locks.has(room.code)) {
         rooms.delete(room.code);
         broadcastLobby();
         continue;

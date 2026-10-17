@@ -67,8 +67,15 @@ function Scoreboard({ room, user }) {
 function WinnerCelebration({ winners, round, match = false }) {
   if (!winners.length) return null;
   return <section className={`winner-celebration ${winners.length > 3 ? 'many-winners' : ''}`} aria-label={match ? 'Match winners' : 'Round winners'}>
-    <div className="winner-confetti" aria-hidden="true">{Array.from({ length: 20 }, (_, index) =>
-      <i key={index} style={{ '--piece': index }} />)}</div>
+    <div className="winner-confetti" aria-hidden="true">{Array.from({ length: 60 }, (_, index) =>
+      <i key={index} style={{
+        '--origin': index % 2 ? '92%' : '8%',
+        '--spread': (index % 2 ? -1 : 1) * (0.3 + ((index * 7) % 19) / 15),
+        '--lift': `${-55 - (index * 13) % 85}px`,
+        '--spin': `${(index % 2 ? -1 : 1) * (360 + (index * 47) % 540)}deg`,
+        '--delay': `${Math.floor(index / 20) * 160 + (index % 5) * 18}ms`,
+        '--duration': `${2800 + (index * 37) % 1000}ms`,
+      }}><span /></i>)}</div>
     <div className="winner-badge"><Icon name="trophy" size={20} /><span>{match ? 'MATCH' : `ROUND ${round}`}<b>{winners.length > 1 ? 'WINNERS' : 'WINNER'}</b></span></div>
     <p className="sr-only" role="status">{winners.map((winner) => winner.name).join(' & ')} {winners.length > 1 ? 'win' : 'wins'} {match ? 'the match' : `round ${round}`}!</p>
     <div className="winner-grid" style={{ '--winner-columns': Math.min(winners.length, 3) }}>{winners.map((winner) => <div className="winner-player" key={winner.id}>
@@ -103,6 +110,8 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const [chatText, setChatText] = useState('');
   const [panel, setPanel] = useState(null);
   const [mobile, setMobile] = useState(() => window.matchMedia(compactTableQuery).matches);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const swipeStart = useRef(null);
   const [drawSource, setDrawSource] = useState('drawPile');
   const [discardCardId, setDiscardCardId] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -129,7 +138,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   useEffect(() => { setDrawSource('drawPile'); setDiscardCardId(null); }, [discardKey]);
   useEffect(() => {
     const query = window.matchMedia(compactTableQuery);
-    const update = () => { setMobile(query.matches); setPanel(null); };
+    const update = () => { setMobile(query.matches); setPanel(null); setControlsOpen(false); swipeStart.current = null; };
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
   }, []);
@@ -188,10 +197,28 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const currentResult = lastResult?.round === room.round ? lastResult : null;
   const roundWinners = currentResult?.scores.filter((entry) => entry.penalty === 0) || [];
   const tableReactions = room.chat.filter((message) => reactions.some(([emoji]) => emoji === message.text)).slice(-30);
-  return <div className={`game-page table-experience ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''}`}>
+  return <div className={`game-page table-experience ${controlsOpen ? 'table-controls-open' : ''} ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''}`}
+    onTouchStart={(event) => {
+      swipeStart.current = null;
+      if (!mobile || panel || event.touches.length !== 1
+        || event.target.closest('button, input, textarea, a, .playing-card, [role="dialog"]')) return;
+      const touch = event.touches[0];
+      swipeStart.current = { x: touch.clientX, y: touch.clientY };
+    }}
+    onTouchEnd={(event) => {
+      const start = swipeStart.current;
+      swipeStart.current = null;
+      if (!start || event.touches.length || event.changedTouches.length !== 1) return;
+      const touch = event.changedTouches[0];
+      const distance = touch.clientY - start.y;
+      if (Math.abs(distance) < 45 || Math.abs(distance) <= Math.abs(touch.clientX - start.x) * 1.5) return;
+      setControlsOpen(distance > 0);
+    }}
+    onTouchCancel={() => { swipeStart.current = null; }}>
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{actionFeedback && <span key={actionFeedback.id}>{actionFeedback.message}</span>}</div>
     <div className="rotate-hint"><Icon name="cards" size={32} /><h2>Turn your phone sideways</h2><p>This table is designed for landscape play. Rotate your phone to see your cards and all table controls together.</p></div>
-    <div className="game-heading"><div><span className="eyebrow">{isWaiting ? 'YOUR NEXT GREAT CARD NIGHT' : `ROUND ${room.round} · ${room.deckCount} DECK${room.deckCount === 1 ? '' : 'S'}`}</span><h1>{room.name}</h1></div>
+    {mobile && !controlsOpen && <button className="table-controls-handle" aria-label="Show table code and Leave controls" aria-expanded={false} aria-controls="table-heading" onClick={() => setControlsOpen(true)}><span /></button>}
+    <div id="table-heading" className="game-heading" hidden={mobile && !controlsOpen}><div><span className="eyebrow">{isWaiting ? 'YOUR NEXT GREAT CARD NIGHT' : `ROUND ${room.round} · ${room.deckCount} DECK${room.deckCount === 1 ? '' : 'S'}`}</span><h1>{room.name}</h1></div>
       <div className="game-heading-actions"><button className="code-badge" onClick={copyCode} title="Copy table code">{room.code}<Icon name="copy" size={15} /></button>
         <button className="icon-button" aria-label="Game rules" onClick={onRules}><Icon name="book" /></button>
         {isHost && (room.status === 'playing' || isRoundEnd) && <button className="button button-danger button-small" disabled={busy || !connected}
@@ -200,7 +227,10 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               sendGameAction('game:abort', { revision: room.revision }, event.currentTarget);
             }
           }}><Icon name="close" size={16} /> Abort game</button>}
-        {(isWaiting || isFinished || isAborted) && <button className="button button-outline button-small table-leave" disabled={busy || !connected} onClick={() => send('room:leave', {})}><Icon name="exit" size={16} /> Leave</button>}
+        <button className="button button-outline button-small table-leave" disabled={busy || !connected} onClick={() => {
+          if ((isWaiting || isFinished || isAborted) || window.confirm('Leave this match? You cannot rejoin it, and your opponents will continue playing.')) send('room:leave', {});
+        }}><Icon name="exit" size={16} /> Leave</button>
+        {mobile && <button className="table-controls-close" aria-label="Hide table controls" aria-expanded={true} aria-controls="table-heading" onClick={() => setControlsOpen(false)}><Icon name="close" size={16} /></button>}
       </div>
     </div>
     {!connected && <div className="inline-warning" role="status">Connection interrupted. Reconnecting automatically; your seat is reserved.</div>}
@@ -215,16 +245,18 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           <div className="table-grain" />
           <div className="opponents">
             {opponents.map((player, index) => <div key={player.id} style={{ '--seat-x': `${seatPositions[index][0]}%`, '--seat-y': `${seatPositions[index][1]}%` }} className={`opponent ${room.turnId === player.id ? 'opponent-active' : ''} ${player.eliminated ? 'eliminated' : ''}`}>
-              <div className="opponent-avatar"><Avatar name={player.name} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} /></div>
+              <div className="opponent-avatar"><Avatar name={player.name} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} />
+                {!isWaiting && !player.eliminated && <span className="mobile-card-count" aria-label={`${player.name} has ${player.cardCount} ${player.cardCount === 1 ? 'card' : 'cards'}`}><Icon name="cards" size={12} /><b>{player.cardCount}</b></span>}
+              </div>
               <b>{player.name}</b><span>{player.eliminated ? 'Watching' : isWaiting ? 'Ready to play' : `${player.cardCount} cards · ${player.score} pts`}</span>
               <span className="player-lives">{player.lives} {player.lives === 1 ? 'life' : 'lives'}</span>
               {!isWaiting && !player.eliminated && <div className="mini-hand">{Array.from({ length: Math.min(player.cardCount, 5) }, (_, i) => <div key={i} />)}{player.cardCount > 5 && <small>+{player.cardCount - 5}</small>}</div>}
             </div>)}
-            {isWaiting && Array.from({ length: Math.max(0, 3 - room.players.length) }, (_, index) => <div className="opponent empty-seat" style={{ '--seat-x': `${seatPositions[opponents.length + index][0]}%`, '--seat-y': `${seatPositions[opponents.length + index][1]}%` }} key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
+            {isWaiting && Array.from({ length: Math.max(0, 2 - room.players.length) }, (_, index) => <div className="opponent empty-seat" style={{ '--seat-x': `${seatPositions[opponents.length + index][0]}%`, '--seat-y': `${seatPositions[opponents.length + index][1]}%` }} key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
           </div>
           <div className="table-center">
-            {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < 3 ? `Waiting for ${3 - room.players.length} more player${room.players.length === 1 ? 's' : ''} to begin.` : 'Everyone’s here. Let the good times begin.'}</p>
-              {isHost ? <button className="button button-accent" disabled={room.players.length < 3 || busy || !connected}
+            {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < 2 ? 'Waiting for 1 more player to begin.' : 'Ready to begin. The host can deal when everyone has joined.'}</p>
+              {isHost ? <button className="button button-accent" disabled={room.players.length < 2 || busy || !connected}
                 onClick={(event) => sendGameAction('game:start', { revision: room.revision }, event.currentTarget)}><Icon name="cards" size={18} /> Deal the cards</button> : <span className="waiting-host">Waiting for the host to deal…</span>}
               <span className="table-player-count">{room.players.length} / {room.capacity} players at the table</span>
             </div> : isAborted ? <div className="finished-center"><span className="eyebrow">MATCH CANCELLED</span>

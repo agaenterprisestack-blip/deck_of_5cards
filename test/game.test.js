@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_RULES, createDeck, deckCount, createRoom, joinRoom, startRound,
+  DEFAULT_RULES, createDeck, deckCount, createRoom, joinRoom, leaveRoom, startRound,
   legalPlay, playTurn, expireTurn, showHand, finishMatch, abortMatch, handValue, roomView,
 } from '../server/game.js';
 
@@ -21,14 +21,14 @@ function hands(room, ranks) {
 }
 
 test('deck sizing covers every supported table size and includes two jokers per deck', () => {
-  assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(deckCount), [1, 2, 2, 3, 3, 3, 4, 4]);
+  assert.deepEqual([2, 3, 4, 5, 6, 7, 8, 9, 10].map(deckCount), [1, 1, 2, 2, 3, 3, 3, 4, 4]);
   const deck = createDeck(4);
   assert.equal(deck.length, 216);
   assert.equal(new Set(deck.map((entry) => entry.id)).size, 216);
   assert.equal(deck.filter((entry) => entry.rank === 0).length, 8);
 });
-test('all 3–10 player games deal five cards and reveal one starter', () => {
-  for (let count = 3; count <= 10; count++) {
+test('all 2–10 player games deal five cards and reveal one starter', () => {
+  for (let count = 2; count <= 10; count++) {
     const room = fixture(count);
     assert.ok(room.players.every((player) => player.hand.length === 5));
     assert.equal(room.discardPile.length, 1);
@@ -36,6 +36,95 @@ test('all 3–10 player games deal five cards and reveal one starter', () => {
     assert.equal(room.turnId, 'p1');
     assert.equal(room.round, 1);
   }
+});
+test('two-player turns alternate, showing waits for both, and subsequent rounds rotate dealers', () => {
+  const room = fixture(2);
+  assert.throws(() => showHand(room, 'p1'), /Everyone must complete/);
+  playTurn(room, 'p1', [room.players[1].hand[0].id]);
+  assert.equal(room.turnId, 'p0');
+  assert.throws(() => showHand(room, 'p0'), /Everyone must complete/);
+  playTurn(room, 'p0', [room.players[0].hand[0].id]);
+  assert.equal(room.turnId, 'p1');
+  hands(room, [[1], [2]]);
+  showHand(room, 'p0');
+  assert.equal(room.status, 'roundEnd');
+  assert.deepEqual(room.players.map((player) => player.score), [0, 2]);
+  startRound(room, 'p0');
+  assert.equal(room.round, 2);
+  assert.equal(room.dealerIndex, 1);
+  assert.equal(room.turnId, 'p0');
+  room.players[1].lives = 1;
+  room.turnId = 'p1';
+  expireTurn(room);
+  assert.equal(room.status, 'finished');
+  assert.equal(room.winnerId, 'p0');
+});
+test('leaving the current turn advances safely, transfers host, and preserves other hands and scores', () => {
+  const room = fixture(4);
+  room.turnId = 'p0';
+  const others = structuredClone(room.players.slice(1));
+  leaveRoom(room, 'p0');
+  assert.equal(room.status, 'playing');
+  assert.equal(room.hostId, 'p1');
+  assert.equal(room.turnId, 'p1');
+  assert.equal(room.players[0].left, true);
+  assert.equal(room.players[0].eliminated, true);
+  assert.deepEqual(room.players.slice(1), others);
+  assert.deepEqual(roomView(room, 'p1').players.map((player) => player.id), ['p1', 'p2', 'p3']);
+  assert.throws(() => leaveRoom(room, 'p0'), /Join a table/);
+});
+test('leaving off-turn or while watching does not change the turn or award a premature win', () => {
+  const room = fixture(4);
+  room.players[3].eliminated = true;
+  leaveRoom(room, 'p3');
+  assert.equal(room.turnId, 'p1');
+  assert.equal(room.status, 'playing');
+  leaveRoom(room, 'p2');
+  assert.equal(room.turnId, 'p1');
+  assert.equal(room.status, 'playing');
+  playTurn(room, 'p1', [room.players[1].hand[0].id]);
+  assert.equal(room.turnId, 'p0');
+});
+test('departures between rounds exclude players from future deals and showing requirements', () => {
+  const room = fixture(4);
+  hands(room, [[1], [2], [3], [4]]);
+  showHand(room, 'p0');
+  leaveRoom(room, 'p1');
+  assert.equal(room.status, 'roundEnd');
+  startRound(room, 'p0');
+  assert.equal(room.players[1].hand.length, 0);
+  assert.equal(room.players[0].hand.length, 5);
+  assert.notEqual(room.turnId, 'p1');
+  room.completedTurnIds = ['p0', 'p2', 'p3'];
+  assert.equal(roomView(room, 'p0').showUnlocked, true);
+});
+test('a departure awards the sole active survivor a win during play or the round break', () => {
+  for (const status of ['playing', 'roundEnd']) {
+    const room = fixture(3);
+    room.status = status;
+    room.nextRoundDeadline = Date.now() + 15_000;
+    room.players[2].eliminated = true;
+    leaveRoom(room, 'p1');
+    assert.equal(room.status, 'finished');
+    assert.deepEqual(room.winnerIds, ['p0']);
+    assert.equal(room.turnId, null);
+    assert.equal(room.nextRoundDeadline, null);
+    const scores = room.players.map((player) => player.score);
+    leaveRoom(room, 'p0');
+    assert.deepEqual(room.winnerIds, ['p0']);
+    assert.deepEqual(room.players.map((player) => player.score), scores);
+  }
+});
+test('leaving a waiting table removes its seat and transfers host without ending a match', () => {
+  const room = createRoom('ABC234', { id: 'p0', name: 'Host' });
+  joinRoom(room, { id: 'p1', name: 'Opponent' });
+  leaveRoom(room, 'p0');
+  assert.equal(room.status, 'waiting');
+  assert.equal(room.hostId, 'p1');
+  assert.equal(room.players.length, 1);
+  leaveRoom(room, 'p1');
+  assert.equal(room.players.length, 0);
+  assert.equal(room.hostId, null);
 });
 test('card values match ranks, with Joker zero and court cards 11–13', () => {
   assert.equal(handValue([0, 1, 7, 11, 12, 13].map((rank) => card(rank))), 44);
@@ -505,7 +594,7 @@ test('the selected elimination threshold ends a match when one survivor remains'
 test('room creation supports each points-to-eliminate option and defaults to 201', () => {
   const host = { id: 'p0', name: 'Player 0' };
   assert.equal(createRoom('ABC234', host).pointsToEliminate, 201);
-  for (const points of [101, 201, 401, 1001]) {
+  for (const points of [50, 101, 200, 201, 350, 401, 1001]) {
     const room = createRoom('ABC234', host, { pointsToEliminate: points });
     assert.equal(room.pointsToEliminate, points);
     assert.equal(roomView(room, 'p0').pointsToEliminate, points);
@@ -539,7 +628,7 @@ test('room views never reveal opponent hands during an active round', () => {
 });
 test('host restrictions, full table, late join, and minimum player count are enforced', () => {
   const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { capacity: 3 });
-  assert.throws(() => startRound(room, 'p0'), /3 players/);
+  assert.throws(() => startRound(room, 'p0'), /2 players/);
   joinRoom(room, { id: 'p1', name: 'Player 1' });
   joinRoom(room, { id: 'p2', name: 'Player 2' });
   assert.throws(() => joinRoom(room, { id: 'p3', name: 'Player 3' }), /full/);
@@ -569,8 +658,15 @@ test('scoring does not mutate previously revealed round results', () => {
   showHand(room, 'p0');
   assert.deepEqual(room.results[0], previous);
 });
-test('default house rules enable all four legal-play options', () => {
-  assert.equal(Object.values(DEFAULT_RULES).every(Boolean), true);
+test('default house rules enable any card and same number, with other rules opt-in', () => {
+  assert.deepEqual(DEFAULT_RULES, {
+    sameNumber: true, rummy: false, anyCard: true, continuation: false,
+  });
+  const host = { id: 'p0', name: 'Host' };
+  assert.deepEqual(createRoom('ABC234', host).rules, DEFAULT_RULES);
+  assert.deepEqual(createRoom('ABC234', host, { rules: { rummy: true, continuation: true } }).rules, {
+    sameNumber: true, rummy: true, anyCard: true, continuation: true,
+  });
 });
 
 test('only the host can abort playing or between rounds, without changing scores or results', () => {

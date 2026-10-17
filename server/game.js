@@ -4,9 +4,9 @@ export class GameError extends Error {}
 
 export const DEFAULT_RULES = {
   sameNumber: true,
-  rummy: true,
+  rummy: false,
   anyCard: true,
-  continuation: true,
+  continuation: false,
 };
 
 export function deckCount(players) {
@@ -81,17 +81,45 @@ export function createRoom(code, host, options = {}) {
 }
 
 export function joinRoom(room, user) {
+  if (room.players.some((player) => player.id === user.id && player.left)) throw new GameError('You left this match and cannot rejoin it.');
   if (room.players.some((player) => player.id === user.id)) return;
   if (room.status !== 'waiting') throw new GameError('This match has already started.');
   if (room.players.length >= room.capacity) throw new GameError('This table is full.');
   room.players.push({ id: user.id, name: user.name, score: 0, hand: [], eliminated: false, lives: 5 });
 }
 
+export function leaveRoom(room, userId) {
+  const player = room.players.find((entry) => entry.id === userId && !entry.left);
+  if (!player) throw new GameError('Join a table first.');
+  if (room.status === 'waiting') {
+    room.players = room.players.filter((entry) => entry.id !== userId);
+  } else {
+    if (room.status === 'playing' && room.turnId === userId && !player.eliminated) advance(room, player);
+    player.left = true;
+    if (['playing', 'roundEnd'].includes(room.status)) {
+      player.eliminated = true;
+      room.completedTurnIds = room.completedTurnIds.filter((id) => id !== userId);
+      room.lastAction = `${player.name} left the match.`;
+      const survivors = room.players.filter((entry) => !entry.eliminated);
+      if (survivors.length <= 1) {
+        room.status = 'finished';
+        room.turnId = null;
+        room.turnDeadline = null;
+        room.nextRoundDeadline = null;
+        room.winnerId = survivors[0]?.id || null;
+        room.winnerIds = survivors.map((entry) => entry.id);
+        room.lastAction += survivors.length ? ` ${survivors[0].name} wins the match!` : 'No active players remain.';
+      }
+    }
+  }
+  if (room.hostId === userId) room.hostId = room.players.find((entry) => !entry.left)?.id || null;
+}
+
 export function startRound(room, userId) {
   if (room.hostId !== userId) throw new GameError('Only the host can deal.');
   if (!['waiting', 'roundEnd'].includes(room.status)) throw new GameError('A round cannot start now.');
   const active = room.players.filter((player) => !player.eliminated);
-  if (active.length < (room.round === 0 ? 3 : 2)) throw new GameError('At least 3 players are needed to start a match.');
+  if (active.length < 2) throw new GameError('At least 2 players are needed to start a round.');
   const deck = shuffle(createDeck(deckCount(active.length)));
   for (const player of room.players) {
     player.hand = player.eliminated ? [] : deck.splice(0, 5);
@@ -290,7 +318,7 @@ export function roomView(room, viewerId, connectedIds = new Set()) {
     winnerHands: room.status === 'finished' ? room.players
       .filter((player) => (room.winnerIds || [room.winnerId]).includes(player.id))
       .map((player) => ({ id: player.id, name: player.name, hand: player.hand })) : [],
-    players: room.players.map(({ hand, ...player }) => ({
+    players: room.players.filter((player) => !player.left).map(({ hand, ...player }) => ({
       ...player, cardCount: hand.length, connected: connectedIds.has(player.id),
       ...(player.id === viewerId ? { hand, value: handValue(hand) } : {}),
     })),

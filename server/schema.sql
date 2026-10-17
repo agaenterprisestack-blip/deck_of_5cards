@@ -19,8 +19,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   player_id UUID NOT NULL UNIQUE REFERENCES players(id) ON DELETE CASCADE,
   password_hash TEXT NOT NULL
 );
--- Guest profiles remain historical records, not claimable accounts.
-DELETE FROM sessions WHERE player_id NOT IN (SELECT player_id FROM accounts);
 CREATE TABLE IF NOT EXISTS matches (
   id UUID PRIMARY KEY,
   room_code TEXT NOT NULL,

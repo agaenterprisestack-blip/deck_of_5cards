@@ -213,9 +213,6 @@ button svg { flex-shrink: 0; }
 .capacity-picker { display: flex; gap: 6px; }
 .capacity-picker button { display: flex; flex: 1; justify-content: center; padding: 10px 0; border: 1px solid #dce1d2; border-radius: 5px; background: transparent; font-size: 12px; font-weight: 500; color: #687e59; }
 .capacity-picker .active { background: #294e38; border-color: #294e38; color: #fff9e9; }
-.points-picker { display: flex; gap: 6px; }
-.points-picker button { flex: 1; padding: 10px 4px; border: 1px solid #ded6d9; border-radius: 5px; background: #fff; font-size: 11px; font-weight: 600; color: #655b60; }
-.points-picker button.active { background: #191619; border-color: #191619; color: #fff; }
 .rule-options { border: 1px solid #dde2d3; border-radius: 6px; padding: 8px 15px; margin: 0; }
 .rule-options legend { font-size: 11px; font-weight: 600; padding: 0 5px; color: #536849; }
 .rule-options label { display: flex; justify-content: space-between; padding: 10px 0; font-size: 12px; color: #6c7b60; }
@@ -855,6 +852,9 @@ body { background: #f8f7f7; }
 }
 
 .rotate-hint { display: none; }
+.mobile-card-count { display: none; }
+.table-controls-handle, .table-controls-close { display: none; }
+.table-experience .game-heading[hidden] { display: none; }
 .app-in-game .table-experience {
   background: radial-gradient(ellipse at top, #50332566, transparent 65%), repeating-linear-gradient(100deg, #1d1511 0 60px, #291b14 61px 120px);
   border-radius: 18px;
@@ -925,12 +925,17 @@ body { background: #f8f7f7; }
   .app-in-game .site-header { display: none; }
   .app-in-game .table-experience { inset: 0; height: 100dvh; border-radius: 0; padding: 5px max(8px, env(safe-area-inset-right)) max(5px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   .table-experience .game-heading { margin: 0 0 4px; min-height: 44px; }
+  .table-controls-handle { display: flex; position: absolute; z-index: 5; top: 0; left: 50%; transform: translateX(-50%); width: 70px; height: 44px; align-items: flex-start; justify-content: center; padding: 4px 0 0; border: 0; background: transparent; touch-action: manipulation; }
+  .table-controls-handle > span { width: 30px; height: 4px; border-radius: 4px; background: #e6b980; box-shadow: 0 1px 3px #000; }
+  .table-controls-close { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border: 1px solid #e6b980; border-radius: 6px; color: #fff9e9; background: #291b14; }
+  .table-controls-handle:focus-visible, .table-controls-close:focus-visible { outline: 3px solid #e6b980; outline-offset: -3px; }
   .table-experience .game-heading h1 { font-size: 18px; margin: 0; }
   .table-experience .game-heading .eyebrow { font-size: 8px; }
   .table-experience .game-layout { margin: 0 60px 0 0; }
   .table-experience .game-main { height: 100%; }
-  .table-experience .felt-table { height: 100%; min-height: 0; border-width: 8px; border-radius: 100px; display: block; }
+  .table-experience .felt-table { height: 100%; min-height: 0; border-width: 8px; border-radius: 100px; display: block; touch-action: pan-x pinch-zoom; }
   .table-experience .opponent { width: 85px; }
+  .table-experience .mobile-card-count { position: absolute; display: inline-flex; align-items: center; justify-content: center; gap: 2px; left: calc(100% - 4px); top: 8px; min-width: 27px; height: 16px; padding: 0 3px; border: 1px solid #e6b980; border-radius: 6px; background: #fff9e9; color: #183b32; font-size: 11px; line-height: 1; white-space: nowrap; }
   .table-experience .opponent .avatar, .table-experience .empty-seat-circle { width: 28px; height: 28px; font-size: 11px; margin: 0; }
   .table-experience .opponent > b { font-size: 9px; }
   .table-experience .opponent > span { font-size: 8px; }
@@ -1035,12 +1040,24 @@ body { background: #f8f7f7; }
 .winner-celebration .card-corner-bottom { top: auto; left: auto; bottom: 3px; right: 3px; }
 .winner-celebration .card-corner > span { font-size: 8px; }
 .winner-celebration .card-suit { font-size: 22px; }
-.winner-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.winner-confetti i { position: absolute; left: calc(var(--piece) * 5%); top: -10px; width: 5px; height: 9px; background: #60e89c; animation: winner-confetti 2.4s ease-out 3 both; animation-delay: calc(var(--piece) * 45ms); }
-.winner-confetti i:nth-child(3n) { background: #f4cf77; }
-.winner-confetti i:nth-child(3n + 1) { background: #fff; }
+.winner-confetti { position: absolute; z-index: 3; inset: -45px -12% -40px; overflow: hidden; pointer-events: none; }
+.winner-confetti i { --travel: calc(clamp(55px, 16vw, 160px) * var(--spread)); position: absolute; left: var(--origin); top: 65%; width: 7px; height: 12px; opacity: 0; animation: winner-paper-blast var(--duration) linear var(--delay) both; }
+.winner-confetti i > span { display: block; width: 100%; height: 100%; background: #ed3650; box-shadow: inset 1px 1px #ffffff66; animation: winner-paper-flutter 460ms ease-in-out var(--delay) 9 alternate; }
+.winner-confetti i:nth-child(4n) > span { background: #f4cf77; }
+.winner-confetti i:nth-child(4n + 1) > span { background: #fff9e9; }
+.winner-confetti i:nth-child(4n + 2) > span { background: #65e7a1; }
+.winner-confetti i:nth-child(3n) { width: 5px; height: 16px; }
+.winner-confetti i:nth-child(5n) { width: 9px; height: 9px; }
 @keyframes winner-arrive { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
-@keyframes winner-confetti { from { opacity: 0; transform: translateY(0) rotate(0); } 15% { opacity: 1; } to { opacity: 0; transform: translateY(180px) rotate(270deg); } }
+@keyframes winner-paper-blast {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  5% { opacity: 1; }
+  25% { transform: translate(calc(var(--travel) * .65), var(--lift)) rotate(calc(var(--spin) * .3)); }
+  45% { opacity: 1; transform: translate(var(--travel), calc(var(--lift) * .8)) rotate(calc(var(--spin) * .55)); }
+  75% { opacity: .9; transform: translate(calc(var(--travel) * 1.08), 40px) rotate(calc(var(--spin) * .8)); }
+  100% { opacity: 0; transform: translate(calc(var(--travel) * 1.15), 180px) rotate(var(--spin)); }
+}
+@keyframes winner-paper-flutter { from { transform: perspective(80px) rotateY(-65deg) rotateX(20deg); } to { transform: perspective(80px) rotateY(65deg) rotateX(-30deg); } }
 .table-experience.game-outcome .hand-panel { display: none; }
 .table-experience.game-outcome .table-center { top: 18%; bottom: 8%; left: 20%; right: 20%; height: auto; flex-direction: column; }
 .table-experience.game-outcome .waiting-center, .table-experience.game-outcome .finished-center { width: 100%; min-width: 0; }

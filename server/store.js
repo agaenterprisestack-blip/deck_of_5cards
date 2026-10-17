@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
-const publicUser = (user) => ({ id: user.id, name: user.name });
+const publicUser = (user) => ({ id: user.id, name: user.name, isGuest: Boolean(user.isGuest) });
 const deriveKey = promisify(scrypt);
 const usernameKey = (name) => name.trim().normalize('NFKC').toLowerCase();
 const passwordKey = (password, salt) => deriveKey(password, salt, 64, { N: 16384, r: 8, p: 1 });
@@ -29,6 +29,7 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
   const sessions = new Map();
   const matches = new Map();
   const accounts = new Map();
+  const registeredIds = new Set();
   return {
     persistent: Boolean(pool),
     async register(name, password) {
@@ -53,6 +54,7 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
       } else {
         if (accounts.has(key)) throw new AccountError('That username is already taken. Choose another.', 409);
         accounts.set(key, { user, hash });
+        registeredIds.add(user.id);
       }
       return publicUser(user);
     },
@@ -72,7 +74,7 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
       return publicUser(account.user);
     },
     async createPlayer(name) {
-      const user = { id: randomUUID(), name };
+      const user = { id: randomUUID(), name, isGuest: true };
       if (pool) {
         await pool.query('INSERT INTO players (id, name) VALUES ($1,$2)', [user.id, name]);
       }
@@ -96,7 +98,8 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
       if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
       if (pool) {
         const { rows } = await pool.query(
-          'SELECT p.id,p.name FROM players p JOIN sessions s ON s.player_id=p.id WHERE s.token_hash=$1 AND s.expires_at>NOW()',
+          `SELECT p.id,p.name,NOT EXISTS (SELECT 1 FROM accounts a WHERE a.player_id=p.id) AS "isGuest"
+           FROM players p JOIN sessions s ON s.player_id=p.id WHERE s.token_hash=$1 AND s.expires_at>NOW()`,
           [hashToken(token)]);
         return rows[0] || null;
       }
@@ -139,11 +142,12 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
       if (pool) return (await pool.query(
         `SELECT p.id,p.name,COUNT(*)::int AS played,
          COUNT(*) FILTER (WHERE m.won)::int AS wins,ROUND(AVG(m.score))::int AS average
-         FROM match_players m JOIN players p ON p.id=m.player_id
+         FROM match_players m JOIN players p ON p.id=m.player_id JOIN accounts a ON a.player_id=p.id
          GROUP BY p.id,p.name ORDER BY wins DESC,average ASC LIMIT 20`)).rows;
       const stats = new Map();
       for (const match of matches.values()) {
         for (const player of match.players) {
+          if (!registeredIds.has(player.id)) continue;
           const entry = stats.get(player.id) || { id: player.id, name: player.name, played: 0, wins: 0, total: 0 };
           entry.played++;
           entry.wins += Number(player.won);

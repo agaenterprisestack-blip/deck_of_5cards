@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { io } from 'socket.io-client';
 import { createStore } from '../server/store.js';
 import { createApp } from '../server/app.js';
+import { createRoom } from '../server/game.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, message = 'Expected realtime state was not received') {
@@ -38,8 +39,255 @@ test('registered usernames are unique and accounts can log back in with revocabl
   await store.close();
 });
 
+test('leaderboards exclude all guests while retaining registered results and mixed-match history', async (t) => {
+  const store = await createStore();
+  t.after(() => store.close());
+  const guest = await store.createPlayer('Alex');
+  const member = await store.register('Alex', 'test-password-one');
+  assert.equal(guest.isGuest, true);
+  assert.equal(member.isGuest, false);
+  const room = createRoom('ABC234', member);
+  room.players = [
+    { ...member, score: 20 }, { ...guest, score: 0, isGuest: false },
+  ];
+  room.winnerId = guest.id;
+  await store.saveMatch(room);
+  assert.deepEqual(await store.leaderboard(), [
+    { id: member.id, name: member.name, played: 1, wins: 0, average: 20 },
+  ]);
+  assert.equal((await store.history(member.id)).length, 1);
+  assert.equal((await store.history(guest.id))[0].won, true);
+  room.matchId = 'another-match';
+  room.winnerId = member.id;
+  await store.saveMatch(room);
+  await store.saveMatch(room);
+  assert.deepEqual(await store.leaderboard(), [
+    { id: member.id, name: member.name, played: 2, wins: 1, average: 20 },
+  ]);
+  const guestToken = await store.session(guest);
+  assert.deepEqual(await store.authenticate(guestToken), guest);
+  await store.logout(guestToken);
+  assert.equal(await store.authenticate(guestToken), null);
+});
+
+test('two-seat tables validate capacity, require an opponent, and play through sockets', async (t) => {
+  const store = await createStore();
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const clients = [];
+  t.after(async () => {
+    clients.forEach((client) => client.socket.disconnect());
+    await server.close();
+  });
+  for (let index = 0; index < 3; index++) {
+    const user = await store.createPlayer(`Duel Player ${index}`);
+    const token = await store.session(user);
+    const socket = io(url, { auth: { token }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { socket, user, room: null, emit: (event, data) => socket.timeout(4000).emitWithAck(event, data) };
+    socket.on('room', (room) => { client.room = room; });
+    clients.push(client);
+    await new Promise((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('connect_error', reject);
+      socket.connect();
+    });
+  }
+  const options = { name: 'Two-player table', capacity: 2,
+    rules: { anyCard: true, sameNumber: true, rummy: true, continuation: true } };
+  for (const capacity of [1, 11]) {
+    assert.equal((await clients[0].emit('room:create', { ...options, capacity })).ok, false);
+  }
+  for (const pointsToEliminate of [49, 1002, 50.5, '200', null]) {
+    assert.equal((await clients[0].emit('room:create', { ...options, pointsToEliminate })).ok, false);
+    assert.equal(server.rooms.size, 0);
+  }
+  for (const pointsToEliminate of [50, 200, 350, 1001]) {
+    assert.equal((await clients[0].emit('room:create', { ...options, pointsToEliminate })).ok, true);
+    await until(() => clients[0].room?.pointsToEliminate === pointsToEliminate);
+    assert.equal([...server.rooms.values()][0].pointsToEliminate, pointsToEliminate);
+    assert.equal((await clients[0].emit('room:leave', {})).ok, true);
+    await until(() => clients[0].room === null);
+  }
+  assert.equal((await clients[0].emit('room:create', options)).ok, true);
+  await until(() => clients[0].room);
+  const code = clients[0].room.code;
+  assert.equal((await clients[0].emit('game:start', { revision: server.rooms.get(code).revision })).ok, false);
+  assert.equal((await clients[1].emit('room:join', { code })).ok, true);
+  assert.equal((await clients[2].emit('room:join', { code })).ok, false);
+  assert.equal((await clients[0].emit('game:start', { revision: server.rooms.get(code).revision })).ok, true);
+  await until(() => clients.slice(0, 2).every((client) => client.room?.status === 'playing'));
+  assert.equal(server.rooms.get(code).capacity, 2);
+  assert.equal(server.rooms.get(code).drawPile.length, 43);
+  for (const index of [1, 0]) {
+    const room = server.rooms.get(code);
+    assert.equal(room.turnId, clients[index].user.id);
+    assert.equal((await clients[index].emit('game:play', {
+      revision: room.revision, cardIds: [room.players[index].hand[0].id],
+    })).ok, true);
+  }
+  await until(() => clients.slice(0, 2).every((client) => client.room?.showUnlocked));
+  for (const client of clients.slice(0, 2)) {
+    assert.equal(client.room.players.filter((player) => 'hand' in player).length, 1);
+    assert.equal(client.room.players.find((player) => player.id === client.user.id).hand.length, 5);
+  }
+});
+
+for (const departureState of ['off-turn', 'current-turn', 'round-break']) {
+test(`mid-match leaving (${departureState}) releases all tabs, preserves play, records the last survivor, and deletes an empty table`, async (t) => {
+  const store = await createStore();
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const clients = [];
+  t.after(async () => {
+    clients.forEach((client) => client.socket.disconnect());
+    await server.close();
+  });
+  const users = await Promise.all(['Leaving Host', 'Next Host', 'Survivor'].map((name) => store.register(name, 'test-password')));
+  const tokens = await Promise.all(users.map((user) => store.session(user)));
+  async function connect(index) {
+    const socket = io(url, { auth: { token: tokens[index] }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { socket, room: null, lobby: [], emit: (event, data) => socket.timeout(4000).emitWithAck(event, data) };
+    socket.on('room', (room) => { client.room = room; });
+    socket.on('lobby', (rooms) => { client.lobby = rooms; });
+    clients.push(client);
+    await new Promise((resolve, reject) => {
+      socket.once('connect', resolve); socket.once('connect_error', reject); socket.connect();
+    });
+    return client;
+  }
+  const host = await connect(0);
+  const hostTab = await connect(0);
+  const nextHost = await connect(1);
+  const survivor = await connect(2);
+  const options = { name: 'Leaving table', capacity: 3,
+    rules: { anyCard: true, sameNumber: true, rummy: false, continuation: false } };
+  assert.equal((await host.emit('room:create', options)).ok, true);
+  await until(() => host.room);
+  const code = host.room.code;
+  for (const client of [nextHost, survivor]) assert.equal((await client.emit('room:join', { code })).ok, true);
+  assert.equal((await host.emit('game:start', { revision: server.rooms.get(code).revision })).ok, true);
+  const setup = server.rooms.get(code);
+  if (departureState === 'current-turn') {
+    setup.turnId = users[0].id;
+    setup.turnDeadline = Date.now() + 1000;
+  } else if (departureState === 'round-break') {
+    setup.status = 'roundEnd';
+    setup.turnId = null;
+    setup.turnDeadline = null;
+    setup.nextRoundDeadline = Date.now() + 15_000;
+  }
+  const before = structuredClone(server.rooms.get(code));
+  assert.equal((await host.emit('room:leave', {})).ok, true);
+  await until(() => host.room === null && hostTab.room === null && nextHost.room?.players.length === 2);
+  const after = server.rooms.get(code);
+  assert.equal(after.status, before.status);
+  assert.equal(after.hostId, users[1].id);
+  assert.equal(after.turnId, departureState === 'current-turn' ? users[1].id : before.turnId);
+  if (departureState === 'current-turn') {
+    assert.ok(after.turnDeadline > before.turnDeadline);
+    assert.ok(after.turnDeadline - Date.now() > 28_000);
+  } else {
+    assert.equal(after.turnDeadline, before.turnDeadline);
+    assert.equal(after.nextRoundDeadline, before.nextRoundDeadline);
+  }
+  assert.deepEqual(after.players.slice(1), before.players.slice(1));
+  assert.equal((await hostTab.emit('chat:send', { text: 'I left' })).ok, false);
+  assert.equal((await host.emit('room:join', { code })).ok, false);
+  const reconnected = await connect(0);
+  assert.equal(reconnected.room, null);
+  assert.equal((await reconnected.emit('room:create', { ...options, name: 'Another table' })).ok, true);
+  await until(() => reconnected.room?.name === 'Another table');
+  const anotherCode = reconnected.room.code;
+  assert.equal((await reconnected.emit('room:leave', {})).ok, true);
+  assert.equal(server.rooms.has(anotherCode), false);
+  const saveMatch = store.saveMatch;
+  store.saveMatch = async () => { throw new Error('Simulated persistence failure'); };
+  const errorLog = t.mock.method(console, 'error', () => {});
+  assert.equal((await nextHost.emit('room:leave', {})).code, 'SERVER_ERROR');
+  assert.deepEqual(server.rooms.get(code), after);
+  assert.equal(errorLog.mock.callCount(), 1);
+  errorLog.mock.restore();
+  store.saveMatch = saveMatch;
+  assert.equal((await nextHost.emit('room:leave', {})).ok, true);
+  await until(() => nextHost.room === null && survivor.room?.status === 'finished');
+  assert.deepEqual(survivor.room.winnerIds, [users[2].id]);
+  assert.equal(survivor.room.players.length, 1);
+  assert.equal(server.rooms.get(code).turnDeadline, null);
+  assert.equal(server.rooms.get(code).nextRoundDeadline, null);
+  assert.equal((await store.history(users[2].id))[0].won, true);
+  for (const user of users.slice(0, 2)) assert.equal((await store.history(user.id))[0].won, false);
+  assert.equal((await store.leaderboard()).length, 3);
+  assert.equal((await survivor.emit('room:leave', {})).ok, true);
+  await until(() => survivor.room === null && clients.every((client) => !client.lobby.some((room) => room.code === code)));
+  assert.equal(server.rooms.has(code), false);
+  assert.equal((await store.history(users[2].id)).length, 1);
+});
+}
+
 test('production refuses to start without persistent storage', async () => {
   await assert.rejects(createStore({ production: true }), /DATABASE_URL/);
+});
+
+test('waiting tables expire after 45 minutes, release all tabs, and leave started matches alone', async (t) => {
+  const store = await createStore();
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const clients = [];
+  t.after(async () => {
+    clients.forEach((client) => client.socket.disconnect());
+    await server.close();
+  });
+  const users = await Promise.all(['Host', 'Guest', 'Observer'].map((name) => store.createPlayer(name)));
+  for (const user of [users[0], users[0], users[1], users[2]]) {
+    const token = await store.session(user);
+    const socket = io(url, { auth: { token }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { socket, room: null, lobby: [], notices: [] };
+    socket.on('room', (room) => { client.room = room; });
+    socket.on('lobby', (rooms) => { client.lobby = rooms; });
+    socket.on('server:error', ({ error }) => client.notices.push(error));
+    clients.push(client);
+    await new Promise((resolve, reject) => {
+      socket.once('connect', resolve); socket.once('connect_error', reject); socket.connect();
+    });
+  }
+  const options = { name: 'Expiry test', capacity: 3,
+    rules: { anyCard: true, sameNumber: true, rummy: true, continuation: true } };
+  const emit = (index, event, data) => clients[index].socket.timeout(4000).emitWithAck(event, data);
+  assert.equal((await emit(0, 'room:create', options)).ok, true);
+  await until(() => clients[0].room && clients[1].room);
+  const code = clients[0].room.code;
+  assert.equal((await emit(2, 'room:join', { code })).ok, true);
+  assert.equal((await emit(3, 'room:join', { code })).ok, true);
+  const room = server.rooms.get(code);
+  room.createdAt = Date.now() - 44 * 60_000;
+  const offline = createRoom('OFFLIN', { id: 'offline-host', name: 'Offline host' });
+  offline.createdAt = room.createdAt;
+  offline.updatedAt = Date.now() - 40 * 60_000;
+  server.rooms.set(offline.code, offline);
+  const started = createRoom('STARTD', { id: 'started-host', name: 'Started host' });
+  started.status = 'playing';
+  started.createdAt = Date.now() - 46 * 60_000;
+  server.rooms.set(started.code, started);
+  await delay(1100);
+  assert.equal(server.rooms.has(code), true);
+  assert.equal(server.rooms.has(offline.code), true);
+  room.createdAt = Date.now() - 45 * 60_000;
+  offline.createdAt = room.createdAt;
+  assert.equal((await emit(0, 'chat:send', { text: 'Recent activity must not extend expiry' })).ok, true);
+  await until(() => clients.every((client) => client.room === null && client.notices.length === 1));
+  assert.equal(server.rooms.has(code), false);
+  assert.equal(server.rooms.has(offline.code), false);
+  assert.equal(server.rooms.has(started.code), true);
+  assert.match(clients[0].notices[0], /45 minutes/);
+  await until(() => clients.every((client) => !client.lobby.some((entry) => entry.code === code)));
+  assert.equal((await emit(0, 'room:join', { code })).ok, false);
+  assert.equal((await emit(0, 'room:create', options)).ok, true);
+  await until(() => clients[0].room && clients[1].room);
+  assert.notEqual(clients[0].room.code, code);
+  assert.deepEqual(await store.history(users[0].id), []);
 });
 
 test('multiplayer validates discard choices and automatically deals after the round break without an online host', async (t) => {
@@ -335,7 +583,13 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   const sameName = await api('/signup', { method: 'POST', data: { name: 'Another Player', password: 'test-password' } });
   assert.equal(sameName.status, 201);
   assert.equal((await api('/signup', { method: 'POST', data: { name: 'A', password: 'short' } })).status, 400);
-  assert.equal((await api('/guest', { method: 'POST', data: { name: 'A' } })).status, 404);
+  const guest = await api('/guest', { method: 'POST', data: { name: 'Player 0', isGuest: false } });
+  assert.equal(guest.status, 201);
+  assert.match(guest.data.user.name, /^Guest-[a-f0-9]{18}$/);
+  assert.equal(guest.data.user.isGuest, true);
+  assert.equal(accounts[0].user.isGuest, false);
+  assert.deepEqual((await api('/me', { token: guest.data.token })).data.user, guest.data.user);
+  accounts[2] = guest.data;
   assert.equal((await api('/login', { method: 'POST', data: { name: 'Player 0', password: 'wrong' } })).status, 401);
   const loggedIn = await api('/login', { method: 'POST', data: { name: 'PLAYER 0', password: 'test-password' } });
   assert.equal(loggedIn.status, 200);
@@ -365,7 +619,7 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   assert.equal((await players[3].emit('room:create', { ...options, name: 'Separate table' })).ok, true);
   await until(() => players[3].state.room?.name === 'Separate table');
   assert.equal(players[3].state.room.pointsToEliminate, 401);
-  assert.equal((await players[3].emit('room:create', { ...options, pointsToEliminate: 200 })).ok, false);
+  assert.equal((await players[3].emit('room:create', { ...options, pointsToEliminate: 49 })).ok, false);
   assert.notEqual(players[3].state.room.code, code);
   assert.equal((await players[0].emit('room:create', options)).ok, false);
   await until(() => players[0].state.room.players.length === 3);
@@ -383,7 +637,6 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
     assert.equal(view.players.filter((player) => 'hand' in player).length, 1);
     assert.equal('drawPile' in view, false);
   }
-  assert.equal((await players[0].emit('room:leave', {})).ok, false);
   const currentIndex = accounts.findIndex((account) => account.user.id === players[0].state.room.turnId);
   revision = players[currentIndex].state.room.revision;
   const fullHandBefore = structuredClone(server.rooms.get(code));
@@ -502,8 +755,11 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   assert.equal(history.data[0].score, 0);
   assert.deepEqual((await api('/history', { token: sameName.data.token })).data, []);
   const leaderboard = await api('/leaderboard', { token: accounts[0].token });
-  assert.equal(leaderboard.data.length, 3);
+  assert.equal(leaderboard.data.length, 2);
   assert.equal(leaderboard.data[0].wins, 1);
+  assert.equal(leaderboard.data.some((entry) => entry.id === guest.data.user.id), false);
+  assert.equal((await api('/leaderboard', { token: guest.data.token })).data.length, 2);
+  assert.equal((await api('/history', { token: guest.data.token })).data.length, 1);
   assert.equal((await players[0].emit('room:leave', {})).ok, true);
   await until(() => players[0].state.room === null);
   assert.equal((await api('/logout', { method: 'POST', token: accounts[0].token })).status, 200);
@@ -512,4 +768,6 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   await store.logout(accounts[3].token);
   const expiredAction = await players[3].emit('chat:send', { text: 'Expired session' });
   assert.equal(expiredAction.code, 'AUTH_REQUIRED');
+  assert.equal((await api('/logout', { method: 'POST', token: guest.data.token })).status, 200);
+  assert.equal((await api('/me', { token: guest.data.token })).status, 401);
 });
