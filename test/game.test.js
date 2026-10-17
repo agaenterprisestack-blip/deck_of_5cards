@@ -126,7 +126,7 @@ test('expired full-hand turns skip unchanged and count towards unlocking show', 
   const drawPile = [...room.drawPile];
   const discardPile = [...room.discardPile];
   for (let i = 0; i < 3; i++) expireTurn(room);
-  assert.deepEqual(room.players, players);
+  assert.deepEqual(room.players, players.map((player) => ({ ...player, lives: 4 })));
   assert.deepEqual(room.drawPile, drawPile);
   assert.deepEqual(room.discardPile, discardPile);
   assert.equal(room.turnId, 'p1');
@@ -138,8 +138,67 @@ test('expired turns below the limit still draw one card', () => {
   hands(room, [[1, 2, 3, 4], [1], [2]]);
   expireTurn(room);
   assert.equal(room.players[0].hand.length, 5);
+  assert.equal(room.players[0].lives, 4);
   assert.equal(room.turnId, 'p1');
   assert.match(room.lastAction, /timer expired/);
+});
+test('five missed turns eliminate a player, preserve cards, and advance in seat order', () => {
+  const room = fixture(4);
+  room.turnId = 'p2';
+  const hand = [...room.players[2].hand];
+  for (let missed = 1; missed <= 5; missed++) {
+    room.turnId = 'p2';
+    expireTurn(room);
+    assert.equal(room.players[2].lives, 5 - missed);
+    assert.equal(room.players[2].eliminated, missed === 5);
+    assert.equal(room.turnId, 'p3');
+    assert.deepEqual(room.players[2].hand, hand);
+  }
+  assert.equal(room.status, 'playing');
+  assert.match(room.lastAction, /now watching/);
+  room.turnId = 'p1';
+  expireTurn(room);
+  assert.equal(room.turnId, 'p3');
+  assert.throws(() => playTurn(room, 'p2', []), /not your turn/);
+  const view = roomView(room, 'p2');
+  assert.equal(view.players[2].lives, 0);
+  assert.equal(view.players[2].eliminated, true);
+  assert.deepEqual(view.players[2].hand, hand);
+});
+test('lives carry over legal turns and new rounds without reviving eliminated players', () => {
+  const room = fixture(4);
+  room.turnId = 'p0';
+  expireTurn(room);
+  room.turnId = 'p0';
+  playTurn(room, 'p0', [room.players[0].hand[0].id]);
+  assert.equal(room.players[0].lives, 4);
+  room.players[1].lives = 1;
+  room.turnId = 'p1';
+  expireTurn(room);
+  room.status = 'roundEnd';
+  startRound(room, 'p0');
+  assert.deepEqual(room.players.map((p) => p.lives), [4, 0, 5, 5]);
+  assert.deepEqual(room.players[1].hand, []);
+  assert.equal(room.players[1].eliminated, true);
+});
+test('final-life timeout ends the match with the last active player winning', () => {
+  const room = fixture();
+  room.players[0].eliminated = true;
+  room.players[0].lives = 0;
+  room.players[1].lives = 1;
+  room.players[1].hand = [];
+  room.drawPile = [];
+  room.discardPile = [];
+  room.turnId = 'p1';
+  expireTurn(room);
+  assert.equal(room.status, 'finished');
+  assert.equal(room.turnId, null);
+  assert.equal(room.turnDeadline, null);
+  assert.deepEqual(room.winnerIds, ['p2']);
+  assert.equal(room.winnerId, 'p2');
+  assert.equal(room.players[1].lives, 0);
+  assert.deepEqual(room.players.map((p) => p.score), [0, 0, 0]);
+  assert.throws(() => expireTurn(room), /no active round/);
 });
 test('taking last discard without dropping removes only the previous top and does not touch draw pile', () => {
   const room = fixture();

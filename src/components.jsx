@@ -59,7 +59,7 @@ export function Card({ card, back = false, selected = false, onClick, small = fa
     : <div className={className} style={style} aria-label={back ? 'Face-down card' : joker ? 'Joker' : `${rankLabel(card.rank)} of ${card.suit}`}>{face}</div>;
 }
 
-export function Modal({ title, subtitle, onClose, children, notification }) {
+export function Modal({ title, subtitle, onClose, children, notification, className = '' }) {
   const dialog = useRef(null);
   useEffect(() => {
     const element = dialog.current;
@@ -70,7 +70,7 @@ export function Modal({ title, subtitle, onClose, children, notification }) {
       if (previousFocus instanceof HTMLElement) previousFocus.focus();
     };
   }, []);
-  return <dialog ref={dialog} className="modal" onCancel={(event) => { event.preventDefault(); onClose(); }}
+  return <dialog ref={dialog} className={`modal ${className}`} onCancel={(event) => { event.preventDefault(); onClose(); }}
     onClick={(event) => { if (event.target === dialog.current) onClose(); }} aria-labelledby="modal-title">
     <div className="modal-inner">
       <button className="icon-button modal-close" aria-label="Close dialog" onClick={onClose}><Icon name="close" /></button>
@@ -92,7 +92,7 @@ export function RulesContent() {
   return <div className="rules-content">
     <div className="rule-intro"><span className="rule-number">5</span><p>Five cards in your hand.<br /><strong>One goal: keep it low.</strong></p></div>
     <section><h3>01 / Take your seat</h3><p>3–10 players. Everyone receives 5 cards and one card starts the discard pile. 3 players use 1 deck, 4–5 use 2, 6–8 use 3, and 9–10 use 4. Each deck includes 2 jokers. Play begins after the dealer.</p></section>
-    <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings). Tap a selected card again to deselect it. Tap the draw-pile card or last-discard card directly on the table to choose where to take your next card; the selected pile is highlighted. Confirm with Drop &amp; draw, which always stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: with 5 cards, tapping without selecting cards prompts you to select at least one to drop. Below 5, you may draw without dropping. Last discard takes only the previous visible top card, not a card you just dropped. If no discard remains, that choice is unavailable. Show hand stays on the left. Each player has 10 seconds per turn; when time runs out, a hand with 5 cards is skipped unchanged, while a hand below 5 automatically takes one card from the draw pile. The turn then advances, and timed-out turns count as completed for unlocking Show hand.</p>
+    <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings). Tap a selected card again to deselect it. Tap the draw-pile card or last-discard card directly on the table to choose where to take your next card; the selected pile is highlighted. Confirm with Drop &amp; draw, which always stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: with 5 cards, tapping without selecting cards prompts you to select at least one to drop. Below 5, you may draw without dropping. Last discard takes only the previous visible top card, not a card you just dropped. If no discard remains, that choice is unavailable. Show hand stays on the left. Each player has 30 seconds per turn and 5 lives for the entire match. Every timeout costs one life. While lives remain, a hand with 5 cards is skipped unchanged, while a hand below 5 automatically takes one card from the draw pile; these turns count towards unlocking Show hand. On the fifth timeout, you are eliminated and stay as a spectator with chat access. Lives do not reset between rounds or after playing a turn. The last active player wins.</p>
       <ul><li><strong>Any card:</strong> drop any single card.</li><li><strong>Same number:</strong> drop a group of equal ranks, or one card matching the top discard.</li><li><strong>Rummy:</strong> drop a set of 3–4 equal ranks in different suits. Mixed-rank runs are not allowed.</li><li><strong>Continuation:</strong> a single card one rank above the top discard in the same suit.</li></ul>
       <p>Aces are low. Jokers score 0 but are not wildcards. The host can toggle rules before creating a table.</p></section>
     <section><h3>03 / Know when to show</h3><p>Everyone must complete one turn in each dealt round before anyone can show. After that, you may show any hand value at the start of your turn. A unique lowest showing player adds 0; everyone else adds their own hand value. A beaten showing player adds 50; everyone else adds their own hand value. If another player matches the showing hand value, the showing player adds 50, matching players add 0, and everyone else adds their own hand value. This tie rule applies even if someone else has a lower hand. Points are added to cumulative match scores, not used to reset them.</p></section>

@@ -187,7 +187,7 @@ export default function App() {
       setSound(true);
     } catch (error) { notify(error.message); }
   }
-  return <div className="app-shell">
+  return <div className={`app-shell ${page === 'play' && room && user ? 'app-in-game' : ''}`}>
     <header className="site-header"><div className="header-inner">
       <button className="logo-button" aria-label="5 Cards home" onClick={() => navigate('play')}><Logo /></button>
       <nav className="main-nav" aria-label="Main navigation">
@@ -206,7 +206,7 @@ export default function App() {
     <main className="main-container">
       {backendError && <div className="inline-warning" role="alert"><span>{backendError}</span><button onClick={() => { socket?.connect(); setRefresh((value) => value + 1); }}>Retry connection</button></div>}
       {health?.storage === 'memory' && <div className="dev-banner"><span className="status-dot" />Local play mode<span className="dev-detail"> · Player sessions & history reset when the server restarts. Connect PostgreSQL for persistence.</span></div>}
-      {page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} />
+      {page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} />
         : <Lobby user={user} rooms={rooms} connected={connected} onCreate={() => setModal('create')} onJoin={(code) => send('room:join', { code })} onRules={() => setModal('rules')} onSignIn={signIn} />
         : dataError ? <section className="data-page"><h2>Couldn’t load this page.</h2><p role="alert" className="form-error">{dataError}</p><button className="button button-dark" onClick={() => setRefresh((value) => value + 1)}>Try again</button></section>
           : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <History entries={data} user={user} loading={dataLoading} />}

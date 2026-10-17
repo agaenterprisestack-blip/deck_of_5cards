@@ -34,7 +34,7 @@ const revisionSchema = z.object({ revision: z.number().int().nonnegative() });
 const chatSchema = z.object({ text: z.string().trim().min(1).max(280) });
 const bearer = (request) => request.headers.authorization?.startsWith('Bearer ')
   ? request.headers.authorization.slice(7) : '';
-const TURN_MS = 10_000;
+const TURN_MS = 30_000;
 
 export function createApp({ store, clientOrigin = 'http://localhost:5173', production = false, trustProxy = false }) {
   const app = express();

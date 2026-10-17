@@ -62,7 +62,7 @@ export function createRoom(code, host, options = {}) {
     capacity: options.capacity || 5,
     pointsToEliminate: options.pointsToEliminate || 201,
     rules: { ...DEFAULT_RULES, ...options.rules },
-    players: [{ id: host.id, name: host.name, score: 0, hand: [], eliminated: false }],
+    players: [{ id: host.id, name: host.name, score: 0, hand: [], eliminated: false, lives: 5 }],
     status: 'waiting',
     round: 0,
     dealerIndex: -1,
@@ -84,7 +84,7 @@ export function joinRoom(room, user) {
   if (room.players.some((player) => player.id === user.id)) return;
   if (room.status !== 'waiting') throw new GameError('This match has already started.');
   if (room.players.length >= room.capacity) throw new GameError('This table is full.');
-  room.players.push({ id: user.id, name: user.name, score: 0, hand: [], eliminated: false });
+  room.players.push({ id: user.id, name: user.name, score: 0, hand: [], eliminated: false, lives: 5 });
 }
 
 export function startRound(room, userId) {
@@ -174,6 +174,22 @@ export function playTurn(room, userId, cardIds, drawSource = 'drawPile') {
 
 export function expireTurn(room) {
   const player = currentPlayer(room, room.turnId);
+  if (player.lives === 1) {
+    advance(room, player);
+    player.lives = 0;
+    player.eliminated = true;
+    room.lastAction = `${player.name} lost their last life after 5 missed turns and is now watching.`;
+    const survivors = room.players.filter((entry) => !entry.eliminated);
+    if (survivors.length === 1) {
+      room.status = 'finished';
+      room.turnId = null;
+      room.turnDeadline = null;
+      room.winnerId = survivors[0].id;
+      room.winnerIds = [survivors[0].id];
+      room.lastAction += ` ${survivors[0].name} wins the match!`;
+    }
+    return;
+  }
   if (player.hand.length >= 5) {
     if (!room.completedTurnIds.includes(player.id)) room.completedTurnIds.push(player.id);
     room.lastAction = `${player.name}'s turn was skipped without drawing (5-card limit).`;
@@ -181,7 +197,8 @@ export function expireTurn(room) {
   } else {
     playTurn(room, player.id, []);
   }
-  room.lastAction += ' (Turn timer expired.)';
+  player.lives--;
+  room.lastAction += ` (Turn timer expired.) ${player.lives} ${player.lives === 1 ? 'life' : 'lives'} remaining.`;
 }
 
 function settleRound(room, { showingId, clash, successful, minimum, message, penaltyFor }) {

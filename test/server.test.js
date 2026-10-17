@@ -32,6 +32,74 @@ test('production refuses to start without persistent storage', async () => {
   await assert.rejects(createStore({ production: true }), /DATABASE_URL/);
 });
 
+test('timeout elimination broadcasts lives, preserves spectator access, and saves the last survivor as winner', { timeout: 15_000 }, async (t) => {
+  const store = await createStore();
+  const save = t.mock.method(store, 'saveMatch');
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const clients = [];
+  t.after(async () => {
+    clients.forEach((client) => client.socket.disconnect());
+    await server.close();
+  });
+  async function connect(token) {
+    const socket = io(url, { auth: { token }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { socket, room: null, emit: (event, data) => socket.timeout(4000).emitWithAck(event, data) };
+    socket.on('room', (room) => { client.room = room; });
+    clients.push(client);
+    await new Promise((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('connect_error', reject);
+      socket.connect();
+    });
+    return client;
+  }
+  const users = [];
+  const tokens = [];
+  const players = [];
+  for (let i = 0; i < 3; i++) {
+    const user = await store.createPlayer(`Lives Player ${i}`);
+    const token = await store.session(user);
+    users.push(user); tokens.push(token); players.push(await connect(token));
+  }
+  assert.equal((await players[0].emit('room:create', { name: 'Lives test', capacity: 3,
+    rules: { anyCard: true, sameNumber: true, rummy: true, continuation: true },
+  })).ok, true);
+  await until(() => players[0].room);
+  const code = players[0].room.code;
+  for (const player of players.slice(1)) assert.equal((await player.emit('room:join', { code })).ok, true);
+  assert.equal((await players[0].emit('game:start', { revision: server.rooms.get(code).revision })).ok, true);
+  assert.deepEqual(server.rooms.get(code).players.map((player) => player.lives), [5, 5, 5]);
+  for (const index of [1, 0]) {
+    const room = server.rooms.get(code);
+    room.turnId = users[index].id;
+    room.players[index].lives = 1;
+    room.turnDeadline = Date.now() - 1;
+    await until(() => players.every((player) => player.room?.players[index].lives === 0));
+    assert.equal(players[index].room.players[index].eliminated, true);
+    const revision = server.rooms.get(code).revision;
+    assert.equal((await players[index].emit('game:play', { revision, cardIds: [] })).ok, false);
+    assert.equal((await players[index].emit('chat:send', { text: 'Still watching' })).ok, true);
+    await until(() => players[2].room.chat.some((message) => message.userId === users[index].id));
+    if (index === 1) {
+      assert.equal(server.rooms.get(code).status, 'playing');
+      assert.equal(save.mock.callCount(), 0);
+      players[1].socket.disconnect();
+      players[1] = await connect(tokens[1]);
+      await until(() => players[1].room?.players[1].lives === 0);
+      assert.equal(players[1].room.players[1].eliminated, true);
+    }
+  }
+  assert.equal(server.rooms.get(code).status, 'finished');
+  assert.equal(server.rooms.get(code).turnDeadline, null);
+  assert.deepEqual(players[2].room.winnerIds, [users[2].id]);
+  assert.equal(save.mock.callCount(), 1);
+  const history = await store.history(users[2].id);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].won, true);
+});
+
 test('host abort broadcasts cancellation, saves nothing, survives reconnect, and releases every seat', { timeout: 15_000 }, async (t) => {
   const store = await createStore();
   const save = t.mock.method(store, 'saveMatch');
@@ -197,7 +265,7 @@ test('HTTP and Socket.IO support name-only entry, rooms, private hands, chat, re
   assert.equal((await players[0].emit('game:start', { revision })).ok, true);
   await until(() => players.every((player, index) => index === 3 || player.state.room?.status === 'playing'));
   const startDeadline = players[0].state.room.turnDeadline;
-  assert.ok(startDeadline - Date.now() <= 10_000 && startDeadline - Date.now() > 8_000);
+  assert.ok(startDeadline - Date.now() <= 30_000 && startDeadline - Date.now() > 28_000);
   assert.equal(players[3].state.room.name, 'Separate table');
   assert.equal(JSON.stringify(players[3].state.lobby).includes('"hand"'), false);
   for (let index = 0; index < 3; index++) {
@@ -262,6 +330,8 @@ test('HTTP and Socket.IO support name-only entry, rooms, private hands, chat, re
   assert.deepEqual(server.rooms.get(code).discardPile, timedRoom.discardPile);
   assert.match(server.rooms.get(code).lastAction, /timer expired/);
   assert.equal(server.rooms.get(code).completedTurnIds.includes(timedPlayer.id), true);
+  assert.equal(server.rooms.get(code).players.find((p) => p.id === timedPlayer.id).lives, 4);
+  await until(() => players[0].state.room.players.find((p) => p.id === timedPlayer.id).lives === 4);
   while (!server.rooms.get(code).players.every((p) => server.rooms.get(code).completedTurnIds.includes(p.id))) {
     const current = server.rooms.get(code);
     const player = players[accounts.findIndex((account) => account.user.id === current.turnId)];

@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Card, Icon, ruleLabels } from './components.jsx';
+import { Avatar, Card, Icon, Modal, ruleLabels } from './components.jsx';
 
-function Chat({ room, user, send, busy }) {
-  const [text, setText] = useState('');
+function Chat({ room, user, send, busy, text, setText }) {
   const messages = useRef(null);
   useEffect(() => {
     if (messages.current) messages.current.scrollTop = messages.current.scrollHeight;
@@ -28,7 +27,7 @@ function Scoreboard({ room, user }) {
   return <section className="score-panel"><div className="chat-heading"><h3><Icon name="trophy" size={18} /> Scoreboard</h3><span>Out at {room.pointsToEliminate}</span></div>
     {[...room.players].sort((a, b) => a.score - b.score).map((player, index) => <div className={`score-row ${player.eliminated ? 'eliminated' : ''}`} key={player.id}>
       <span className="score-rank">{index + 1}</span><Avatar name={player.name} index={room.players.indexOf(player)} small />
-      <div className="score-player"><b>{player.name}{player.id === user.id ? ' (you)' : ''}</b><span>{player.eliminated ? 'Eliminated' : player.id === room.hostId ? 'Host' : player.connected ? 'At the table' : 'Reconnecting'}</span></div><b className="score-value">{player.score}</b>
+      <div className="score-player"><b>{player.name}{player.id === user.id ? ' (you)' : ''}</b><span>{player.eliminated ? 'Eliminated' : player.id === room.hostId ? 'Host' : player.connected ? 'At the table' : 'Reconnecting'} · {player.lives} lives</span></div><b className="score-value">{player.score}</b>
     </div>)}
   </section>;
 }
@@ -43,8 +42,11 @@ function Results({ result }) {
   </div>;
 }
 
-export default function Game({ room, user, send, busy, connected, onRules, notify }) {
+export default function Game({ room, user, send, busy, connected, onRules, notify, notification }) {
   const [selected, setSelected] = useState([]);
+  const [chatText, setChatText] = useState('');
+  const [panel, setPanel] = useState(null);
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [drawSource, setDrawSource] = useState('drawPile');
   const [now, setNow] = useState(Date.now());
   const me = room.players.find((player) => player.id === user.id);
@@ -52,10 +54,17 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   useEffect(() => { setSelected([]); setDrawSource('drawPile'); }, [handKey, room.turnId, room.round]);
   useEffect(() => { if (!room.discard) setDrawSource('drawPile'); }, [room.discard]);
   useEffect(() => {
+    const query = window.matchMedia('(max-width: 900px)');
+    const update = () => { setMobile(query.matches); setPanel(null); };
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
     if (room.status !== 'playing') return;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [room.status]);
+  }, [room.status, room.turnDeadline]);
   const isHost = room.hostId === user.id;
   const myTurn = room.turnId === user.id && room.status === 'playing';
   const canAct = myTurn && connected && !busy;
@@ -95,7 +104,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       notify(`Clipboard unavailable. Share this code: ${room.code}`);
     }
   }
-  return <div className="game-page">
+  return <div className={`game-page ${room.status === 'playing' ? 'game-playing' : ''}`}>
     <div className="game-heading"><div><span className="eyebrow">{isWaiting ? 'YOUR NEXT GREAT CARD NIGHT' : `ROUND ${room.round} · ${room.deckCount} DECK${room.deckCount === 1 ? '' : 'S'}`}</span><h1>{room.name}</h1></div>
       <div className="game-heading-actions"><button className="code-badge" onClick={copyCode} title="Copy table code">{room.code}<Icon name="copy" size={15} /></button>
         <button className="icon-button" aria-label="Game rules" onClick={onRules}><Icon name="book" /></button>
@@ -117,6 +126,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
             {opponents.map((player) => <div key={player.id} className={`opponent ${room.turnId === player.id ? 'opponent-active' : ''} ${player.eliminated ? 'eliminated' : ''}`}>
               <div className="opponent-avatar"><Avatar name={player.name} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} /></div>
               <b>{player.name}</b><span>{player.eliminated ? 'Watching' : isWaiting ? 'Ready to play' : `${player.cardCount} cards · ${player.score} pts`}</span>
+              <span className="player-lives">{player.lives} {player.lives === 1 ? 'life' : 'lives'}</span>
               {!isWaiting && !player.eliminated && <div className="mini-hand">{Array.from({ length: Math.min(player.cardCount, 5) }, (_, i) => <div key={i} />)}{player.cardCount > 5 && <small>+{player.cardCount - 5}</small>}</div>}
             </div>)}
             {isWaiting && Array.from({ length: Math.max(0, 3 - room.players.length) }, (_, index) => <div className="opponent empty-seat" key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
@@ -155,21 +165,33 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           <div className="hand-heading"><div className={`your-hand-title ${myTurn ? 'your-hand-active' : ''}`}><Avatar name={user.name} small /><div><h3>Your hand {me?.eliminated && <span className="muted">· Watching</span>}</h3><p>{isWaiting ? 'The best seat in the house.' : myTurn ? 'Select cards to drop, or draw one.' : isRoundEnd || isFinished ? 'A fresh hand is a fresh start.' : 'Plan your next move.'}</p></div></div>
             {!isWaiting && <div className="hand-total"><span>HAND VALUE</span><b>{me?.value ?? 0}<small>pts</small></b></div>}
           </div>
+          <p className="hand-lives" role="status">{me?.lives} {me?.lives === 1 ? 'life' : 'lives'} remaining{me?.lives === 0 ? ' · Missed-turn limit reached. You are now watching.' : ''}</p>
           <div className="your-cards">
             {isWaiting ? Array.from({ length: 5 }, (_, index) => <Card key={index} back small />) : [...(me?.hand || [])].sort((a, b) => a.rank - b.rank || a.suit.localeCompare(b.suit)).map((card) => <Card key={card.id} card={card} selected={selected.includes(card.id)} onClick={canAct ? () => selectCard(card) : undefined} />)}
             {me?.eliminated && <p className="muted">You’re out of this match. Stay for the conversation.</p>}
           </div>
-          {room.status === 'playing' && !me?.eliminated && <div className="hand-actions"><span className="selection-note" role="status">{selected.length ? `${selected.length} card${selected.length === 1 ? '' : 's'} selected · Same number or face only` : `${me.hand.length >= 5 ? 'You have 5 cards. Select at least one to drop before drawing. ' : ''}${room.showUnlocked ? 'Show any hand value at the start of your turn.' : 'Show unlocks after everyone completes one turn this round.'}`}</span>
+          {room.status === 'playing' && !me?.eliminated && <div className="hand-actions"><span className="selection-note" role="status">{selected.length ? `${selected.length} selected · Tap again to put back` : 'Tap cards to select. Tap again to put back.'}</span>
             <button className="button button-outline hand-show" disabled={!canAct || !room.showUnlocked || selected.length > 0} onClick={() => send('game:show', { revision: room.revision })}>Show hand</button>
             <button className="button button-dark hand-play" disabled={!canAct} onClick={dropAndDraw}>
               {busy ? 'Playing…' : 'Drop & draw'}<Icon name="arrow" size={16} /></button>
           </div>}
           {room.lastAction && <p className="last-action" role="status"><span />{room.lastAction}</p>}
         </section>
-        {(isRoundEnd || isFinished) && room.results.length > 0 && <Results result={room.results.at(-1)} />}
+        {!mobile && (isRoundEnd || isFinished) && room.results.length > 0 && <Results result={room.results.at(-1)} />}
         <div className="active-rules"><span>TABLE RULES</span>{Object.entries(room.rules).filter(([, enabled]) => enabled).map(([rule]) => <span className="rule-chip" key={rule}>{ruleLabels[rule]}</span>)}<button className="text-button" onClick={onRules}>Rulebook <Icon name="arrow" size={14} /></button></div>
       </div>
-      <aside className="game-sidebar"><Scoreboard room={room} user={user} /><Chat room={room} user={user} send={send} busy={busy} /></aside>
+      {!mobile && <aside className="game-sidebar"><Scoreboard room={room} user={user} /><Chat room={room} user={user} send={send} busy={busy} text={chatText} setText={setChatText} /></aside>}
     </div>
+    {mobile && <nav className="game-dock" aria-label="Table tools">
+      <button aria-label="Open chat" aria-haspopup="dialog" onClick={() => setPanel('chat')}><Icon name="chat" /><span>Chat</span></button>
+      <button aria-label="Open scoreboard" aria-haspopup="dialog" onClick={() => setPanel('scores')}><Icon name="trophy" /><span>Scores</span></button>
+      {(isRoundEnd || isFinished) && room.results.length > 0 && <button aria-label="Open round results" aria-haspopup="dialog" onClick={() => setPanel('results')}><Icon name="cards" /><span>Results</span></button>}
+      <button aria-label="Open rulebook" aria-haspopup="dialog" onClick={onRules}><Icon name="book" /><span>Rules</span></button>
+    </nav>}
+    {mobile && panel && <Modal className="game-tool-modal" title={panel === 'chat' ? 'Table chat' : panel === 'scores' ? 'Scores' : 'Round results'}
+      notification={notification} onClose={() => setPanel(null)}>
+      {panel === 'chat' ? <Chat room={room} user={user} send={send} busy={busy} text={chatText} setText={setChatText} />
+        : panel === 'scores' ? <Scoreboard room={room} user={user} /> : <Results result={room.results.at(-1)} />}
+    </Modal>}
   </div>;
 }

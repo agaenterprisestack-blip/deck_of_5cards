@@ -21,7 +21,8 @@ Without `DATABASE_URL`, the server explicitly runs in **development memory mode*
 - Name-only guest entry with revocable, seven-day opaque sessions held in tab-scoped storage. Names are display labels, not unique account identifiers.
 - Multiple tables, configurable capacity and house rules, invitation codes, host controls.
 - Server-authoritative turns and scoring; clients receive only their own private hand.
-- Live presence, reconnecting seats, private table chat, and a 10-second turn timer that automatically advances play.
+- Live presence, reconnecting seats, private table chat, and a 30-second turn timer that automatically advances play.
+- Each player starts with 5 lives for the whole match. Every missed turn costs one life; the fifth timeout eliminates the player into spectator mode without removing their seat or chat access. Lives do not reset after a successful turn, reconnect, or new round. The last active player wins. Remaining lives appear by each player, above your cards, and in the scoreboard.
 - Round reveals, cumulative scores, elimination, shared wins, and match completion.
 - Host-only **Abort game** with confirmation, during or between rounds. All players see the cancellation and can return to the lobby. Aborted matches do not save scores/history or affect leaderboards.
 - Profiles with completed-match history and a leaderboard ordered by wins, then average score.
@@ -51,6 +52,8 @@ Rules and the points-to-elimination limit are configurable when creating a table
 Round points are added to cumulative match scores; a round award of 0 does not reset previous points. The opening-turn show lock resets on every deal and excludes eliminated players.
 
 Select one card or multiple cards of the same number/face only (for example, two 7s or two Kings). Tap selected cards to deselect them before choosing a different rank. **Show hand** is on the left; **Drop & draw** always remains on the right and is enabled on your connected, idle turn even without a selection. With 5 cards, tapping it without selecting cards displays a prompt instead of drawing; below 5 cards, it draws without dropping. It is disabled while submitting, disconnected, or on another player's turn. Both controls have at least 44px touch targets on mobile. Server validation also rejects mixed-rank multi-card drops.
+
+On phones and tablets up to 900px wide, the game uses a portrait-friendly, viewport-sized layout with the table above your hand and move buttons. A bottom icon bar opens Chat, Scores, Rules, and (after a round) Results without scrolling the page. Panels have their own scroll area and a close button; chat drafts survive closing and reopening. Tap a selected card again to return it to its resting position. Short landscape screens also support a side-by-side table and hand.
 
 ## PostgreSQL
 
