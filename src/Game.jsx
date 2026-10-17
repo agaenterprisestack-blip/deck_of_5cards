@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Card, Icon, Modal, rankLabel, ruleLabels } from './components.jsx';
+import { Avatar, Card, FullscreenButton, Icon, Modal, rankLabel, ruleLabels } from './components.jsx';
 
 const compactTableQuery = '(max-width: 1100px)';
 const seatPositions = [[50, 10], [9, 29], [91, 29], [9, 67], [91, 67], [28, 10], [72, 10], [9, 48], [91, 48]];
@@ -314,6 +314,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       {!mobile && <aside className="game-sidebar"><Scoreboard room={room} user={user} /><Chat room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} /></aside>}
     </div>
     {mobile && <nav className="game-dock" aria-label="Table tools">
+      <FullscreenButton notify={notify} compact />
       <button aria-label="Open chat" aria-haspopup="dialog" onClick={() => setPanel('chat')}><Icon name="chat" /><span>Chat</span></button>
       <button aria-label="Open scoreboard" aria-haspopup="dialog" onClick={() => setPanel('scores')}><Icon name="trophy" /><span>Scores</span></button>
       {(isRoundEnd || isFinished) && room.results.length > 0 && <button aria-label="Open round results" aria-haspopup="dialog" onClick={() => setPanel('results')}><Icon name="cards" /><span>Results</span></button>}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const iconPaths = {
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
@@ -15,11 +15,41 @@ const iconPaths = {
   copy: <><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V3H3v13h5" /></>,
   sound: <><path d="m11 4-6 5H2v6h3l6 5zM15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14" /></>,
   mute: <><path d="m11 4-6 5H2v6h3l6 5zM16 9l6 6M16 15l6-6" /></>,
+  fullscreen: <path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" />,
+  minimize: <path d="M3 8h5V3M21 8h-5V3M8 21v-5H3M16 21v-5h5" />,
 };
 
 export function Icon({ name, size = 20, ...props }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>{iconPaths[name] || iconPaths.cards}</svg>;
+}
+
+export function FullscreenButton({ notify, compact = false }) {
+  const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const update = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+  const label = fullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
+  return <button className={compact ? undefined : 'icon-button'} aria-label={label} title={label}
+    aria-pressed={fullscreen} disabled={busy} onClick={async () => {
+      if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen) {
+        notify('Fullscreen is not supported in this browser. Try opening the game in Chrome on Android.');
+        return;
+      }
+      setBusy(true);
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      } catch (error) {
+        notify(`Could not change fullscreen mode: ${error.message}`);
+      } finally { setBusy(false); }
+    }}>
+    <Icon name={fullscreen ? 'minimize' : 'fullscreen'} />
+    {compact && <span>{fullscreen ? 'Exit full' : 'Full screen'}</span>}
+  </button>;
 }
 
 export function Logo() {

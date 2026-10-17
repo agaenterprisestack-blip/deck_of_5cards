@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { request, SERVER_URL } from './api.js';
-import { Avatar, Icon, Logo, Modal, RulesContent, ruleLabels } from './components.jsx';
+import { Avatar, FullscreenButton, Icon, Logo, Modal, RulesContent, ruleLabels } from './components.jsx';
 import Lobby, { History, Leaderboard, heroHeadlines } from './Lobby.jsx';
 import Game from './Game.jsx';
 
@@ -218,6 +218,7 @@ export default function App() {
         <button onClick={() => setModal('rules')}>How to play <span className="nav-arrow">↗</span></button>
       </nav>
       <div className="header-account">
+        <FullscreenButton notify={notify} />
         <button className="icon-button sound-toggle" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'} aria-pressed={sound} onClick={toggleSound}><Icon name={sound ? 'sound' : 'mute'} size={18} /></button>
         {restoring ? <span className="fine-print">Reconnecting…</span> : user ? <>
           <button className={`profile-button ${page === 'profile' ? 'profile-active' : ''}`} onClick={() => navigate('profile')}><Avatar name={user.name} small /><span>{user.name}</span></button>

@@ -84,6 +84,8 @@ Automatic draws continue while anyone at the table is connected and stop while e
 
 ## Production build
 
+Use the fullscreen icon in the site header, or **Full screen** in the mobile table toolbar, to hide browser controls on supported browsers. Tap again to exit; the browser's Back/Escape controls also work. Fullscreen requires a user tap and is not available in every mobile browser; unsupported requests show a message.
+
 ```powershell
 npm run build
 npm start
