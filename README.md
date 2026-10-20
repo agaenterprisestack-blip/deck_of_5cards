@@ -99,7 +99,7 @@ Both platforms are preconfigured in the repository, so each one only needs envir
 
 | File | Platform | Effect |
 | --- | --- | --- |
-| [`railway.json`](railway.json) | Railway | Starts `npm start`, health-checks `/api/health`, keeps one replica, and restarts up to 10 times on failure. The build step runs `npm prune --omit=dev` so the backend image skips the frontend build and ships runtime dependencies only. |
+| [`railway.json`](railway.json) | Railway | Builds the frontend, prunes development dependencies, starts `npm start`, health-checks `/api/health`, keeps one replica, and restarts up to 10 times on failure. Railway therefore serves as both the API and a standalone fallback site. |
 | [`vercel.json`](vercel.json) | Vercel | Builds with `npm run build`, publishes `dist`, and rewrites unmatched paths to `index.html`. |
 | [`.vercelignore`](.vercelignore) | Vercel | Keeps backend and test sources out of the frontend deployment. |
 | [`.nvmrc`](.nvmrc) | Both | Pins Node 22 to match `engines.node`. |
