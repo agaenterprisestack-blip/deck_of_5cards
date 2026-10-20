@@ -95,12 +95,23 @@ Express serves the built frontend and API on `PORT` (default `3001`). Set `NODE_
 
 ### Vercel frontend + Railway backend
 
-1. Deploy the backend on Railway with `npm ci`, `npm start`, PostgreSQL, and the production environment variables above. Keep one replica and enable WebSocket support.
-2. Deploy the frontend on Vercel with build command `npm run build` and output directory `dist`.
-3. Set **Vercel's build-time** `VITE_SERVER_URL` to the Railway HTTPS URL (no trailing slash), then rebuild.
+Both platforms are preconfigured in the repository, so each one only needs environment variables set in its dashboard:
+
+| File | Platform | Effect |
+| --- | --- | --- |
+| [`railway.json`](railway.json) | Railway | Starts `npm start`, health-checks `/api/health`, keeps one replica, and restarts up to 10 times on failure. The build step runs `npm prune --omit=dev` so the backend image skips the frontend build and ships runtime dependencies only. |
+| [`vercel.json`](vercel.json) | Vercel | Builds with `npm run build`, publishes `dist`, and rewrites unmatched paths to `index.html`. |
+| [`.vercelignore`](.vercelignore) | Vercel | Keeps backend and test sources out of the frontend deployment. |
+| [`.nvmrc`](.nvmrc) | Both | Pins Node 22 to match `engines.node`. |
+
+1. Create the Railway service from this repository and add its PostgreSQL plugin. Railway injects `DATABASE_URL`; also set `NODE_ENV=production` and `DATABASE_SSL` to match your provider. WebSockets need no extra configuration.
+2. Create the Vercel project from the same repository. The framework, build command, and output directory are detected from `vercel.json`.
+3. Set **Vercel's build-time** `VITE_SERVER_URL` to the Railway HTTPS URL (no trailing slash), then redeploy. This value is baked into the bundle at build time, so changing it always requires a rebuild.
 4. Set Railway's `CLIENT_ORIGIN` to the exact Vercel HTTPS origin. Multiple explicitly trusted origins can be comma-separated. Do not use `*`.
-5. If exactly one trusted reverse proxy fronts Express, set `TRUST_PROXY=1` for correct rate-limit IP handling. Do not enable this for an untrusted/direct deployment.
+5. Railway terminates TLS through one reverse proxy, so set `TRUST_PROXY=1` there for correct rate-limit IP handling. Do not enable this for an untrusted/direct deployment.
 6. Verify `GET /api/health` returns `storage: "postgresql"` and connect three registered players to a test table.
+
+Deploy order matters: the backend must exist before step 3, and step 4 cannot be completed until the Vercel domain is known. Expect to redeploy the frontend once after setting `VITE_SERVER_URL`.
 
 No cloud resources are automatically provisioned or deployed. Hosting credentials and a database must be supplied by the deployer. Sessions are kept in tab-scoped `sessionStorage`; refresh restores the player, seat, and available history. Closing the tab, logging out, or session expiry requires logging in again with the username and password. Logging out revokes that session's token and disconnects sockets using it.
 
