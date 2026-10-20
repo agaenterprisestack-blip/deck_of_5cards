@@ -59,6 +59,19 @@ test('two-player turns alternate, showing waits for both, and subsequent rounds 
   assert.equal(room.status, 'finished');
   assert.equal(room.winnerId, 'p0');
 });
+test('dealer and opening turn continue clockwise after a lower-seat player is eliminated', () => {
+  const room = fixture(4);
+  assert.equal(room.dealerId, 'p0');
+  room.status = 'roundEnd';
+  startRound(room, 'p0');
+  assert.equal(room.dealerId, 'p1');
+  assert.equal(room.turnId, 'p2');
+  room.status = 'roundEnd';
+  room.players[0].eliminated = true;
+  startRound(room, 'p1');
+  assert.equal(room.dealerId, 'p2');
+  assert.equal(room.turnId, 'p3');
+});
 test('leaving the current turn advances safely, transfers host, and preserves other hands and scores', () => {
   const room = fixture(4);
   room.turnId = 'p0';
@@ -126,8 +139,14 @@ test('leaving a waiting table removes its seat and transfers host without ending
   assert.equal(room.players.length, 0);
   assert.equal(room.hostId, null);
 });
-test('card values match ranks, with Joker zero and court cards 11–13', () => {
-  assert.equal(handValue([0, 1, 7, 11, 12, 13].map((rank) => card(rank))), 44);
+test('card values use Joker zero, Ace one, number ranks, and ten for every court card', () => {
+  assert.equal(handValue([card(0)]), 0);
+  assert.equal(handValue([card(1)]), 1);
+  assert.equal(handValue([card(7)]), 7);
+  assert.equal(handValue([card(11)]), 10);
+  assert.equal(handValue([card(12)]), 10);
+  assert.equal(handValue([card(13)]), 10);
+  assert.equal(handValue([0, 1, 7, 11, 12, 13].map((rank) => card(rank))), 38);
 });
 test('match winning hands are shared with all viewers only after the match finishes', () => {
   const room = fixture();
@@ -505,24 +524,24 @@ test('unique lowest show adds zero to showing player and own hand values to othe
   assert.deepEqual(room.players.map((player) => player.score), [0, 9, 8]);
   assert.equal(room.turnId, null);
 });
-test('clash adds 50 to showing player, zero to matching hands and own values to others', () => {
+test('clash adds 50 to showing player, zero to lowest hands and own values to others', () => {
   const room = fixture();
   hands(room, [[1, 2], [3], [9]]);
   const result = showHand(room, 'p0');
   assert.equal(result.clash, true);
   assert.deepEqual(room.players.map((player) => player.score), [50, 0, 9]);
 });
-test('a beaten show adds 50 to showing player and own values to others even if lowest hands tie', () => {
+test('a beaten show adds 50 to showing player, zero to tied lowest hands, and own values to others', () => {
   const room = fixture();
   hands(room, [[8], [3], [3]]);
   const result = showHand(room, 'p0');
   assert.equal(result.clash, false);
   assert.equal(result.successful, false);
-  assert.deepEqual(room.players.map((player) => player.score), [50, 3, 3]);
+  assert.deepEqual(room.players.map((player) => player.score), [50, 0, 0]);
 });
 test('show accepts hand values above 10 after opening turns', () => {
   const room = fixture();
-  hands(room, [[11], [12], [13]]);
+  hands(room, [[11, 1], [12, 2], [13, 3]]);
   assert.equal(showHand(room, 'p0').successful, true);
 });
 test('show locks until every active player completes a turn and resets on each deal', () => {
@@ -559,17 +578,17 @@ test('opening show lock excludes eliminated players', () => {
   assert.equal(roomView(room, room.turnId).showUnlocked, true);
   assert.equal(room.completedTurnIds.includes('p3'), false);
 });
-test('a match to the showing value takes precedence even if a different player is lower', () => {
+test('a matching show still gives zero to the lower hand and own values to other players', () => {
   const room = fixture(4);
   hands(room, [[8], [8], [3], [12]]);
   room.players.forEach((player) => { player.score = 20; });
   const result = showHand(room, 'p0');
   assert.equal(result.clash, true);
   assert.equal(result.successful, false);
-  assert.deepEqual(result.scores.map((entry) => entry.penalty), [50, 0, 3, 12]);
-  assert.deepEqual(room.players.map((player) => player.score), [70, 20, 23, 32]);
+  assert.deepEqual(result.scores.map((entry) => entry.penalty), [50, 8, 0, 10]);
+  assert.deepEqual(room.players.map((player) => player.score), [70, 28, 20, 30]);
 });
-test('all matching opponents score zero, and zero-point rounds preserve cumulative scores', () => {
+test('lowest hands score zero, and zero-point rounds preserve cumulative scores', () => {
   const room = fixture(4);
   hands(room, [[4], [4], [4], [9]]);
   room.players.forEach((player) => { player.score = 30; });

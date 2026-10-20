@@ -4,6 +4,13 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: { 'playing-cards': ['@letele/playing-cards'] },
+      },
+    },
+  },
   server: {
     strictPort: true,
     proxy: {

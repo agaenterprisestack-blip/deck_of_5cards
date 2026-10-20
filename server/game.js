@@ -36,7 +36,10 @@ function shuffle(cards) {
   return cards;
 }
 
-export const handValue = (hand) => hand.reduce((total, card) => total + card.rank, 0);
+export const handValue = (hand) => hand.reduce(
+  (total, card) => total + Math.min(card.rank, 10),
+  0,
+);
 
 export function legalPlay(cards, top, rules) {
   if (!cards.length) return false;
@@ -66,6 +69,7 @@ export function createRoom(code, host, options = {}) {
     status: 'waiting',
     round: 0,
     dealerIndex: -1,
+    dealerId: null,
     turnId: null,
     completedTurnIds: [],
     drawPile: [],
@@ -124,7 +128,19 @@ export function startRound(room, userId) {
   for (const player of room.players) {
     player.hand = player.eliminated ? [] : deck.splice(0, 5);
   }
-  room.dealerIndex = (room.dealerIndex + 1) % active.length;
+  const previousDealerIndex = room.players.findIndex((player) => player.id === room.dealerId);
+  let dealer = active[0];
+  if (previousDealerIndex >= 0) {
+    for (let offset = 1; offset <= room.players.length; offset++) {
+      const candidate = room.players[(previousDealerIndex + offset) % room.players.length];
+      if (!candidate.eliminated) {
+        dealer = candidate;
+        break;
+      }
+    }
+  }
+  room.dealerId = dealer.id;
+  room.dealerIndex = active.findIndex((player) => player.id === dealer.id);
   room.turnId = active[(room.dealerIndex + 1) % active.length].id;
   room.drawPile = deck;
   room.discardPile = [room.drawPile.pop()];
@@ -270,12 +286,12 @@ export function showHand(room, userId) {
   const successful = value === minimum && !clash;
   return settleRound(room, {
     showingId: userId, clash, successful, minimum,
-    message: clash ? `${showing.name} clashed! +50 points. Matching hands score 0; others add their hand values.`
+    message: clash ? `${showing.name} clashed! +50 points. Lowest hands score 0; others add their hand values.`
       : successful ? `${showing.name} showed the lowest hand!`
-        : `${showing.name}'s show was beaten. +50 points.`,
+        : `${showing.name}'s show was beaten. +50 points. Lowest hands score 0.`,
     penaltyFor: (player) => {
       if (player.id === userId) return successful ? 0 : 50;
-      if (clash && handValue(player.hand) === value) return 0;
+      if (handValue(player.hand) === minimum) return 0;
       return handValue(player.hand);
     },
   });

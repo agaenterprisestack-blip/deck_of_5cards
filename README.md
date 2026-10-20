@@ -24,7 +24,7 @@ Without `DATABASE_URL`, the server explicitly runs in **development memory mode*
 - The lobby headline cycles through three messages after each successful login, sign-up, or guest entry. The selected message stays the same during navigation and reloads in that browser tab.
 - Live presence, reconnecting seats, private table chat, and a 30-second turn timer that automatically advances play.
 - Each player starts with 5 lives for the whole match. Every missed turn costs one life; the fifth timeout eliminates the player into spectator mode without removing their seat or chat access. Lives do not reset after a successful turn, reconnect, or new round. The last active player wins. Remaining lives appear by each player, above your cards, and in the scoreboard.
-- Round reveals, cumulative scores, elimination, shared wins, and match completion.
+- Round reveals, per-player points for every completed round in the scoreboard, cumulative scores, elimination, shared wins, and match completion.
 - Host-only **Abort game** with confirmation, during or between rounds. All players see the cancellation and can return to the lobby. Aborted matches do not save scores/history or affect leaderboards.
 - Profiles with completed-match history and a leaderboard ordered by wins, then average score.
 - Responsive game table, keyboard-accessible controls, reduced-motion support, optional synthesized game sounds.
@@ -36,16 +36,16 @@ These resolve the original brief's unspecified details. They are also available 
 
 | Rule | Behavior |
 | --- | --- |
-| Setup | 2–3 players: 1 deck; 4–5: 2; 6–8: 3; 9–10: 4. Two jokers per deck. Deal five cards each and reveal one starter. Dealer rotates each round; play starts after the dealer. |
+| Setup | 2–3 players: 1 deck; 4–5: 2; 6–8: 3; 9–10: 4. Two jokers per deck. Deal five cards each and reveal one starter. Seats follow join order clockwise. Each player sees their own seat at the bottom while the same relative clockwise order is preserved. The dealer moves to the next active clockwise player each round, and play starts with the active player after the dealer. |
 | Any card | Drop any single card. |
 | Same number | Drop a group of matching ranks (including duplicate suits across decks), or a single card matching the top discard's rank. |
 | Rummy | Drop a distinct-suit, same-rank set of 3–4. Mixed-rank runs are not allowed. Jokers are not wildcards. |
 | Continuation | Drop a single card one rank above the top discard in the same suit. With Any Card enabled this does not further restrict single-card plays. |
 | Turn | Tap the draw pile or any one card in the latest face-up dropped group, then confirm with Drop & draw. All cards in a multi-card drop are visible and individually selectable; take exactly one, never a card you are dropping this turn. A new drop covers the previous group. Without a new drop, unclaimed cards in the latest group remain available; taking its final card does not uncover older cards. Hands never exceed 5 cards: at 5, drop at least one before taking a card from either pile. Below 5, drawing without dropping is allowed. At timeout, a full hand skips unchanged; a smaller hand draws one from the draw pile. |
 | Show | Unlocked after every active player completes one turn in each dealt round, including timed-out draws or skips. Show at the start of your turn with any hand value. A unique lowest showing player adds 0; others add their own hand values. |
-| Clash | If anyone matches the showing hand value, the showing player adds 50, matching players add 0, and others add their own hand values. Applies even when someone else has a lower hand. |
-| Beaten show | Without a matching hand, a showing player beaten by a lower hand adds 50; everyone else adds their own hand value. |
-| Values | Joker 0, Ace 1, numbers face value, Jack 11, Queen 12, King 13. |
+| Clash | If anyone matches the showing hand value, the showing player adds 50, the lowest hand or tied lowest hands add 0, and all other players add their own hand values. |
+| Beaten show | A showing player beaten by a lower hand adds 50; the lowest hand or tied lowest hands add 0, and all other players add their own hand values. |
+| Values | Joker 0, Ace 1, numbers face value, and Jack, Queen, and King 10 each. |
 | Exhausted pile | Recycle only covered discards, keeping the entire latest face-up group available. If a draw-pile turn has no draw or recyclable cards, reveal hands: lowest totals, including ties, score 0; others get +50. Visible cards may still be taken by choosing the discard source. |
 | Elimination | The table creator enters any whole-number limit from 50 to 1,001 points (default 201) before creating the table. Players are eliminated at or above that limit and can watch and chat, but are not dealt cards or scored again. |
 | Winning | Last active player wins. There is no option to finish early at current scores. |
@@ -104,7 +104,7 @@ Express serves the built frontend and API on `PORT` (default `3001`). Set `NODE_
 
 No cloud resources are automatically provisioned or deployed. Hosting credentials and a database must be supplied by the deployer. Sessions are kept in tab-scoped `sessionStorage`; refresh restores the player, seat, and available history. Closing the tab, logging out, or session expiry requires logging in again with the username and password. Logging out revokes that session's token and disconnects sockets using it.
 
-Authentication uses `POST /api/signup` and `POST /api/login` with `{ name, password }`. Usernames are trimmed, Unicode compatibility-normalized, and compared case-insensitively; use 1–24 letters, numbers, spaces, hyphens, or underscores. Passwords must contain 10–128 characters and are not trimmed. A database primary key prevents duplicate usernames even during concurrent registration. Both endpoints share an IP-based authentication rate limit and never return password hashes. Password recovery is not available yet; keep your password safe.
+Authentication uses `POST /api/signup` and `POST /api/login` with `{ name, password }`. Usernames are trimmed, Unicode compatibility-normalized, and compared case-insensitively; use 1–24 letters, numbers, spaces, hyphens, or underscores. Passwords must contain 4–128 characters and are not trimmed. A database primary key prevents duplicate usernames even during concurrent registration. Both endpoints share an IP-based authentication rate limit and never return password hashes. Password recovery is not available yet; keep your password safe.
 
 On startup, existing databases gain a separate `accounts` table. Old guest player IDs and completed histories remain unchanged. A newly registered account always gets a new player ID and cannot claim a guest's profile, history, or seat. Existing accounts and valid sessions survive restarts when using PostgreSQL.
 
@@ -122,3 +122,7 @@ npm run check
 Node's built-in test runner covers deck sizes for all player counts, legal/illegal combinations, private views, turn ownership, recycling/exhaustion, show/clash/beaten-show scoring, elimination, tied wins, and immutable round history. Integration tests start an actual HTTP/Socket.IO server on an ephemeral port and exercise sign-up/login, validation, duplicate and concurrent username rejection, password verification, guest/account isolation, room capacity, hidden hands, stale actions, chat isolation, reconnection, final history, leaderboards, and session revocation.
 
 The automated integration suite uses the explicit in-memory store; production PostgreSQL connectivity and cloud configuration must be verified against your own database.
+
+## Credits
+
+Card faces are rendered with [`@letele/playing-cards`](https://www.npmjs.com/package/@letele/playing-cards), a React SVG deck released under **CC0-1.0** (public domain), derived from Adrian Kennard's classic print-ready card designs. The card back is this project's own artwork.

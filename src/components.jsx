@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import * as deck from '@letele/playing-cards';
 
 const iconPaths = {
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
@@ -62,27 +63,21 @@ export function Avatar({ name = '?', index = 0, small = false }) {
   </span>;
 }
 
-const suits = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠', joker: '✦' };
 export const rankLabel = (rank) => ({ 0: 'JK', 1: 'A', 11: 'J', 12: 'Q', 13: 'K' })[rank] || rank;
+
+const suitKeys = { hearts: 'H', diamonds: 'D', clubs: 'C', spades: 'S' };
+const rankKeys = { 1: 'a', 11: 'j', 12: 'q', 13: 'k' };
+const faceFor = (card) => card.suit === 'joker'
+  ? deck.J1
+  : deck[`${suitKeys[card.suit]}${rankKeys[card.rank] || card.rank}`];
+
 export function Card({ card, back = false, selected = false, onClick, small = false, style }) {
   const joker = !back && card?.suit === 'joker';
   const className = `playing-card ${back ? 'card-back' : ''} ${small ? 'card-small' : ''} ${selected ? 'card-selected' : ''} ${joker ? 'card-joker' : ''} ${['hearts', 'diamonds'].includes(card?.suit) ? 'card-red' : ''}`;
-  const face = back ? <span className="card-back-pattern"><span>5<span>♠</span></span></span> : <>
-    <span className="card-corner">{rankLabel(card.rank)}<span>{suits[card.suit]}</span></span>
-    {joker ? <span className="card-joker-art" aria-hidden="true">
-      <svg viewBox="0 0 80 96" role="presentation">
-        <path d="M14 36 8 10l20 14L39 2l13 23L72 11l-7 29z" fill="#d9273f" stroke="#171417" strokeWidth="3" strokeLinejoin="round" />
-        <path d="m14 36-4-17 18 12L39 7l13 25 17-14-5 21z" fill="none" stroke="#fff" strokeWidth="2" />
-        <circle cx="11" cy="10" r="5" fill="#171417" /><circle cx="39" cy="5" r="5" fill="#d9273f" stroke="#171417" strokeWidth="2" /><circle cx="72" cy="11" r="5" fill="#171417" />
-        <path d="M14 37c0-5 11-7 26-7s26 2 26 7l-4 35c-1 10-10 17-22 17S19 82 18 72z" fill="#fff" stroke="#171417" strokeWidth="3" />
-        <path d="M16 43c8-7 17-8 24-3v10c-8-5-16-4-24 1zm48 0c-8-7-17-8-24-3v10c8-5 16-4 24 1z" fill="#171417" />
-        <path d="M21 65c7 6 13 6 19 1v13c-8 5-15 3-21-3zm38 0c-7 6-13 6-19 1v13c8 5 15 3 21-3z" fill="#d9273f" />
-        <path d="M29 62h7m8 0h7" stroke="#171417" strokeWidth="3" strokeLinecap="round" />
-      </svg>
-      <span>JOKER</span>
-    </span> : <span className="card-suit">{suits[card.suit]}</span>}
-    <span className="card-corner card-corner-bottom">{rankLabel(card.rank)}<span>{suits[card.suit]}</span></span>
-  </>;
+  const Face = back ? null : faceFor(card);
+  const face = back
+    ? <span className="card-back-pattern"><span>5<span>♠</span></span></span>
+    : <Face className="card-face-art" />;
   return onClick
     ? <button className={className} style={style} onClick={onClick} aria-pressed={selected}
       aria-label={`${joker ? 'Joker' : `${rankLabel(card.rank)} of ${card.suit}`}${selected ? ', selected' : ''}`}>{face}</button>
@@ -121,13 +116,13 @@ export const ruleLabels = {
 export function RulesContent() {
   return <div className="rules-content">
     <div className="rule-intro"><span className="rule-number">5</span><p>Five cards in your hand.<br /><strong>One goal: keep it low.</strong></p></div>
-    <section><h3>01 / Take your seat</h3><p>2–10 players. Everyone receives 5 cards and one card starts the discard pile. 2–3 players use 1 deck, 4–5 use 2, 6–8 use 3, and 9–10 use 4. Each deck includes 2 jokers. Play begins after the dealer.</p></section>
+    <section><h3>01 / Take your seat</h3><p>2–10 players. Everyone receives 5 cards and one card starts the discard pile. Seats follow join order clockwise; your own seat stays at the bottom of your screen. The dealer moves one active seat clockwise each round, and play begins with the next active player. 2–3 players use 1 deck, 4–5 use 2, 6–8 use 3, and 9–10 use 4. Each deck includes 2 jokers.</p></section>
     <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings). Tap a selected card again to deselect it. Tap the draw pile or any one face-up card in the latest dropped group; your choice is highlighted. All cards in a multi-card drop are shown in the center. Confirm with Drop &amp; draw to take exactly one card, never a card you are dropping this turn. A new drop covers older groups. If you do not drop, the unclaimed cards in the latest group remain available; taking its last card does not uncover older cards. Covered cards are recycled when the draw pile runs out, while the whole visible group stays on the table. Drop &amp; draw stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: with 5 cards, tapping without selecting cards prompts you to select at least one to drop. Below 5, you may draw without dropping. If no visible discard remains, that choice is unavailable. Show hand stays on the left. Each player has 30 seconds per turn and 5 lives for the entire match. Every timeout costs one life. While lives remain, a hand with 5 cards is skipped unchanged, while a hand below 5 automatically takes one card from the draw pile; these turns count towards unlocking Show hand. On the fifth timeout, you are eliminated and stay as a spectator with chat access. Lives do not reset between rounds or after playing a turn. The last active player wins.</p>
       <ul><li><strong>Any card:</strong> drop any single card.</li><li><strong>Same number:</strong> drop a group of equal ranks, or one card matching the top discard.</li><li><strong>Rummy:</strong> drop a set of 3–4 equal ranks in different suits. Mixed-rank runs are not allowed.</li><li><strong>Continuation:</strong> a single card one rank above the top discard in the same suit.</li></ul>
       <p>Aces are low. Jokers score 0 but are not wildcards. The host can toggle rules before creating a table.</p></section>
-    <section><h3>03 / Know when to show</h3><p>Everyone must complete one turn in each dealt round before anyone can show. After that, you may show any hand value at the start of your turn. A unique lowest showing player adds 0; everyone else adds their own hand value. A beaten showing player adds 50; everyone else adds their own hand value. If another player matches the showing hand value, the showing player adds 50, matching players add 0, and everyone else adds their own hand value. This tie rule applies even if someone else has a lower hand. Points are added to cumulative match scores, not used to reset them.</p></section>
+    <section><h3>03 / Know when to show</h3><p>Everyone must complete one turn in each dealt round before anyone can show. After that, you may show any hand value at the start of your turn. A unique lowest showing player adds 0; everyone else adds their own hand value. A wrong show adds 50 to the showing player, the lowest hand or tied lowest hands add 0, and every other player adds their own hand value. Points are added to cumulative match scores, not used to reset them.</p></section>
     <section><h3>04 / The long game</h3><p>At the table’s selected points limit (any whole number from 50 to 1,001; default 201), you are eliminated and can watch. The last player standing wins. After each round, the next round is dealt automatically following a 15-second countdown; only the first round needs the host to start it. Matches cannot be finished early at current scores. The host can still abort without saving scores. Finished or aborted matches do not restart. If all draw and recyclable discard cards run out, lowest hands get 0 and the others get +50.</p></section>
-    <div className="value-strip"><span>Joker <b>0</b></span><span>Ace <b>1</b></span><span>2–10 <b>Face value</b></span><span>J / Q / K <b>11 / 12 / 13</b></span></div>
+    <div className="value-strip"><span>Joker <b>0</b></span><span>Ace <b>1</b></span><span>2–10 <b>Face value</b></span><span>J / Q / K <b>10 each</b></span></div>
     <p className="fine-print">Anyone can leave at any time. Leaving during a match forfeits your participation and prevents rejoining that match; the others continue with their existing cards and scores. The last active player wins. Host ownership transfers when the host leaves, and the table is removed when its last participant leaves. Disconnecting alone keeps your seat reserved for reconnecting. The host can also abort during or between rounds after confirmation, ending the game for everyone without saving scores or match history. Waiting tables expire 45 minutes after creation if the match has not started, even with players online. Joining and chat do not extend that deadline. Non-waiting tables expire after 30 minutes offline without room activity. Active tables are held in memory and reset if the backend restarts.</p>
   </div>;
 }

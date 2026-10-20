@@ -582,7 +582,7 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   assert.equal(duplicate.status, 409);
   const sameName = await api('/signup', { method: 'POST', data: { name: 'Another Player', password: 'test-password' } });
   assert.equal(sameName.status, 201);
-  assert.equal((await api('/signup', { method: 'POST', data: { name: 'A', password: 'short' } })).status, 400);
+  assert.equal((await api('/signup', { method: 'POST', data: { name: 'A', password: 'abc' } })).status, 400);
   const guest = await api('/guest', { method: 'POST', data: { name: 'Player 0', isGuest: false } });
   assert.equal(guest.status, 201);
   assert.match(guest.data.user.name, /^Guest-[a-f0-9]{18}$/);
@@ -719,10 +719,15 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   // Deterministic server-side hands let the integration test reach scoring without peeking in the UI.
   const active = server.rooms.get(code);
   active.turnId = accounts[0].user.id;
-  active.players.forEach((player, index) => { player.hand = [{ id: `final-${index}`, suit: 'hearts', rank: index + 11 }]; });
+  active.players.forEach((player, index) => {
+    player.hand = [
+      { id: `final-court-${index}`, suit: 'hearts', rank: index + 11 },
+      ...(index ? [{ id: `final-number-${index}`, suit: 'clubs', rank: index }] : []),
+    ];
+  });
   assert.equal((await players[0].emit('game:show', { revision: active.revision })).ok, true);
   await until(() => players[0].state.room.status === 'roundEnd');
-  assert.deepEqual(players[0].state.room.results[0].scores.map((p) => p.penalty), [0, 12, 13]);
+  assert.deepEqual(players[0].state.room.results[0].scores.map((p) => p.penalty), [0, 11, 12]);
   const roundEndRevision = players[0].state.room.revision;
   const beforeFinishAttempt = structuredClone(server.rooms.get(code));
   const removedFinish = await players[0].emit('game:finish', { revision: roundEndRevision });

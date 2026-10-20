@@ -17,7 +17,7 @@ import {
 const usernameSchema = z.string().trim().normalize('NFKC').min(1, 'Enter your username.')
   .max(24, 'Use 24 characters or fewer.').regex(/^[a-zA-Z0-9_ -]+$/, 'Use letters, numbers, spaces, hyphens or underscores.');
 const loginSchema = z.object({ name: usernameSchema, password: z.string().min(1, 'Enter your password.').max(128) });
-const signupSchema = loginSchema.extend({ password: z.string().min(10, 'Use at least 10 characters for your password.').max(128, 'Use 128 characters or fewer.') });
+const signupSchema = loginSchema.extend({ password: z.string().min(4, 'Use at least 4 characters for your password.').max(128, 'Use 128 characters or fewer.') });
 const codeSchema = z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z2-9]{6}$/) });
 const createSchema = z.object({
   name: z.string().trim().min(2).max(36),

@@ -2,7 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Avatar, Card, FullscreenButton, Icon, Modal, rankLabel, ruleLabels } from './components.jsx';
 
 const compactTableQuery = '(max-width: 1100px)';
-const seatPositions = [[50, 10], [9, 29], [91, 29], [9, 67], [91, 67], [28, 10], [72, 10], [9, 48], [91, 48]];
+const clockwiseSeatLayouts = {
+  1: [[50, 10]],
+  2: [[9, 48], [91, 48]],
+  3: [[9, 67], [50, 10], [91, 67]],
+  4: [[9, 67], [28, 10], [72, 10], [91, 67]],
+  5: [[9, 67], [9, 29], [50, 10], [91, 29], [91, 67]],
+  6: [[9, 67], [9, 29], [28, 10], [72, 10], [91, 29], [91, 67]],
+  7: [[9, 67], [9, 48], [9, 29], [50, 10], [91, 29], [91, 48], [91, 67]],
+  8: [[9, 67], [9, 48], [9, 29], [28, 10], [72, 10], [91, 29], [91, 48], [91, 67]],
+  9: [[9, 67], [9, 48], [9, 29], [28, 10], [50, 10], [72, 10], [91, 29], [91, 48], [91, 67]],
+};
+const seatAt = (layout, index) => layout[index] || [50, 10];
 const reactions = [
   ['😂', 'Laugh'], ['😅', 'Oops'], ['👏', 'Applause'],
   ['🎉', 'Celebrate'], ['👍', 'Thumbs up'], ['🤔', 'Thinking'],
@@ -56,11 +67,32 @@ function Chat({ room, user, send, busy, connected, text, setText, compact = fals
 }
 
 function Scoreboard({ room, user }) {
+  const players = [...room.players].sort((a, b) => a.score - b.score);
   return <section className="score-panel"><div className="chat-heading"><h3><Icon name="trophy" size={18} /> Scoreboard</h3><span>Out at {room.pointsToEliminate}</span></div>
-    {[...room.players].sort((a, b) => a.score - b.score).map((player, index) => <div className={`score-row ${player.eliminated ? 'eliminated' : ''}`} key={player.id}>
+    {players.map((player, index) => <div className={`score-row ${player.eliminated ? 'eliminated' : ''}`} key={player.id}>
       <span className="score-rank">{index + 1}</span><Avatar name={player.name} index={room.players.indexOf(player)} small />
       <div className="score-player"><b>{player.name}{player.id === user.id ? ' (you)' : ''}</b><span>{player.eliminated ? 'Eliminated' : player.id === room.hostId ? 'Host' : player.connected ? 'At the table' : 'Reconnecting'} · {player.lives} lives</span></div><b className="score-value">{player.score}</b>
     </div>)}
+    <div className="round-score-history">
+      <div className="round-score-heading"><b>Round points</b><span>Points added each round</span></div>
+      {room.results.length ? <div className="round-score-scroll">
+        <table>
+          <thead><tr><th scope="col">Round</th>{players.map((player) =>
+            <th scope="col" key={player.id}>{player.name}{player.id === user.id ? ' (you)' : ''}</th>)}</tr></thead>
+          <tbody>{room.results.map((result) => <tr key={result.round}>
+            <th scope="row">R{result.round}</th>
+            {players.map((player) => {
+              const score = result.scores.find((entry) => entry.id === player.id);
+              return <td className={score?.penalty === 0 ? 'round-score-zero' : ''} key={player.id}>
+                {score ? `+${score.penalty}` : '—'}
+              </td>;
+            })}
+          </tr>)}</tbody>
+          <tfoot><tr><th scope="row">Total</th>{players.map((player) =>
+            <td className="round-score-total" key={player.id}>{player.score}</td>)}</tr></tfoot>
+        </table>
+      </div> : <p className="round-score-empty">Round points will appear after the first completed round.</p>}
+    </div>
   </section>;
 }
 
@@ -90,7 +122,7 @@ function WrongShowNotice({ result }) {
   const showing = result.scores.find((entry) => entry.id === result.showingId);
   return <div className="wrong-show-notice" role="status">
     <span className="wrong-show-emoji" aria-hidden="true">😅</span>
-    <div><strong>Wrong show — {showing.name}</strong><span>{result.clash ? 'Clash! Same hand total.' : 'Oops! Someone has a lower hand.'} <b>+{showing.penalty} points</b></span></div>
+    <div><strong>Wrong show — {showing.name}</strong><span>{result.clash ? 'Clash! Lowest hand gets 0.' : 'Oops! Lowest hand gets 0.'} <b>+{showing.penalty} points</b></span></div>
   </div>;
 }
 
@@ -157,7 +189,11 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const isFinished = room.status === 'finished';
   const isAborted = room.status === 'aborted';
   const isRoundEnd = room.status === 'roundEnd';
-  const opponents = room.players.filter((player) => player.id !== user.id);
+  const viewerIndex = room.players.findIndex((player) => player.id === user.id);
+  const opponents = viewerIndex < 0 ? room.players.filter((player) => player.id !== user.id)
+    : [...room.players.slice(viewerIndex + 1), ...room.players.slice(0, viewerIndex)];
+  const emptySeats = isWaiting ? Math.max(0, 2 - room.players.length) : 0;
+  const seatPositions = clockwiseSeatLayouts[opponents.length + emptySeats] || [];
   const turnPlayer = room.players.find((player) => player.id === room.turnId);
   const activeCount = room.players.filter((player) => !player.eliminated).length;
   function dropAndDraw(event) {
@@ -244,7 +280,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           })}</div>
           <div className="table-grain" />
           <div className="opponents">
-            {opponents.map((player, index) => <div key={player.id} style={{ '--seat-x': `${seatPositions[index][0]}%`, '--seat-y': `${seatPositions[index][1]}%` }} className={`opponent ${room.turnId === player.id ? 'opponent-active' : ''} ${player.eliminated ? 'eliminated' : ''}`}>
+            {opponents.map((player, index) => <div key={player.id} style={{ '--seat-x': `${seatAt(seatPositions, index)[0]}%`, '--seat-y': `${seatAt(seatPositions, index)[1]}%` }} className={`opponent ${room.turnId === player.id ? 'opponent-active' : ''} ${player.eliminated ? 'eliminated' : ''}`}>
               <div className="opponent-avatar"><Avatar name={player.name} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} />
                 {!isWaiting && !player.eliminated && <span className="mobile-card-count" aria-label={`${player.name} has ${player.cardCount} ${player.cardCount === 1 ? 'card' : 'cards'}`}><Icon name="cards" size={12} /><b>{player.cardCount}</b></span>}
               </div>
@@ -252,7 +288,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               <span className="player-lives">{player.lives} {player.lives === 1 ? 'life' : 'lives'}</span>
               {!isWaiting && !player.eliminated && <div className="mini-hand">{Array.from({ length: Math.min(player.cardCount, 5) }, (_, i) => <div key={i} />)}{player.cardCount > 5 && <small>+{player.cardCount - 5}</small>}</div>}
             </div>)}
-            {isWaiting && Array.from({ length: Math.max(0, 2 - room.players.length) }, (_, index) => <div className="opponent empty-seat" style={{ '--seat-x': `${seatPositions[opponents.length + index][0]}%`, '--seat-y': `${seatPositions[opponents.length + index][1]}%` }} key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
+            {isWaiting && Array.from({ length: emptySeats }, (_, index) => <div className="opponent empty-seat" style={{ '--seat-x': `${seatAt(seatPositions, opponents.length + index)[0]}%`, '--seat-y': `${seatAt(seatPositions, opponents.length + index)[1]}%` }} key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
           </div>
           <div className="table-center">
             {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < 2 ? 'Waiting for 1 more player to begin.' : 'Ready to begin. Any seated player can deal the cards.'}</p>

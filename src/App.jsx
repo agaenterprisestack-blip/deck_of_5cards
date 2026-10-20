@@ -13,21 +13,17 @@ function AuthForm({ signup, onSwitch, onAuthenticated }) {
       event.preventDefault();
       const data = Object.fromEntries(new FormData(event.currentTarget));
       setBusy(true); setError('');
-      if (signup && data.password !== data.confirmPassword) {
-        setError('Passwords do not match.'); setBusy(false); return;
-      }
       try { onAuthenticated(await request(signup ? '/signup' : '/login', { method: 'POST',
         body: JSON.stringify({ name: data.name, password: data.password }) })); }
       catch (failure) { setError(failure.message); }
       finally { setBusy(false); }
     }}>
       <label>Username<input name="name" placeholder="Your unique player name" minLength={1} maxLength={24} autoComplete="username" required autoFocus disabled={busy} /></label>
-      <label>Password<input name="password" type="password" minLength={signup ? 10 : 1} maxLength={128}
+      <label>Password<input name="password" type="password" minLength={signup ? 4 : 1} maxLength={128}
         autoComplete={signup ? 'new-password' : 'current-password'} required disabled={busy} /></label>
-      {signup && <label>Confirm password<input name="confirmPassword" type="password" minLength={10} maxLength={128} autoComplete="new-password" required disabled={busy} /></label>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="button button-dark button-full" disabled={busy}>{busy ? 'One moment…' : signup ? 'Create account' : 'Log in'}<Icon name="arrow" size={17} /></button>
-      <p className="fine-print">{signup ? 'Usernames are unique regardless of capitalization. Use a password of 10–128 characters. Keep it safe: password recovery is not available yet.' : 'Log in to recover your player profile, scores, and reserved seat.'}</p>
+      <p className="fine-print">{signup ? 'Usernames are unique regardless of capitalization. Use a password of 4–128 characters. Keep it safe: password recovery is not available yet.' : 'Log in to recover your player profile, scores, and reserved seat.'}</p>
       <button type="button" className="text-button" disabled={busy} onClick={onSwitch}>{signup ? 'Already have an account? Log in' : 'New to the table? Sign up'}</button>
       <button type="button" className="button button-outline button-full" disabled={busy} onClick={async () => {
         setBusy(true); setError('');
