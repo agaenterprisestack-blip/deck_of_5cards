@@ -187,7 +187,7 @@ test(`mid-match leaving (${departureState}) releases all tabs, preserves play, r
   assert.equal(after.turnId, departureState === 'current-turn' ? users[1].id : before.turnId);
   if (departureState === 'current-turn') {
     assert.ok(after.turnDeadline > before.turnDeadline);
-    assert.ok(after.turnDeadline - Date.now() > 28_000);
+    assert.ok(after.turnDeadline - Date.now() > 13_000);
   } else {
     assert.equal(after.turnDeadline, before.turnDeadline);
     assert.equal(after.nextRoundDeadline, before.nextRoundDeadline);
@@ -372,7 +372,7 @@ test('multiplayer validates discard choices and automatically deals after the ro
   const restarted = server.rooms.get(code);
   assert.equal(restarted.status, 'playing');
   assert.equal(restarted.nextRoundDeadline, null);
-  assert.ok(restarted.turnDeadline - Date.now() > 28_000);
+  assert.ok(restarted.turnDeadline - Date.now() > 13_000);
   assert.deepEqual(restarted.players.map((player) => player.score), scores);
   assert.deepEqual(restarted.players.map((player) => player.lives), lives);
   assert.deepEqual(restarted.players.map((player) => player.hand.length), [0, 5, 5]);
@@ -628,7 +628,7 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   assert.equal((await players[0].emit('game:start', { revision })).ok, false);
   await until(() => players.every((player, index) => index === 3 || player.state.room?.status === 'playing'));
   const startDeadline = players[0].state.room.turnDeadline;
-  assert.ok(startDeadline - Date.now() <= 30_000 && startDeadline - Date.now() > 28_000);
+  assert.ok(startDeadline - Date.now() <= 15_000 && startDeadline - Date.now() > 13_000);
   assert.equal(players[3].state.room.name, 'Separate table');
   assert.equal(JSON.stringify(players[3].state.lobby).includes('"hand"'), false);
   for (let index = 0; index < 3; index++) {

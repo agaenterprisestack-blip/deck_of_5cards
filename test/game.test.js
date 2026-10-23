@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_RULES, createDeck, deckCount, createRoom, joinRoom, leaveRoom, startRound,
+  DEFAULT_RULES, GameError, createDeck, deckCount, createRoom, joinRoom, leaveRoom, startRound,
   legalPlay, playTurn, expireTurn, showHand, finishMatch, abortMatch, handValue, roomView,
 } from '../server/game.js';
 
@@ -196,12 +196,17 @@ test('rummy accepts only distinct-suit same-rank sets, not mixed-rank runs', () 
   assert.equal(legalPlay([card(0), card(1), card(2)], card(9), rules), false);
   assert.equal(legalPlay([card(2), card(2), card(3)], card(9), rules), false);
 });
-test('continuation allows only the next rank in the same suit, with no wrap or Joker', () => {
+test('continuation allows one or more cards matching the top rank in any suit, but not Jokers', () => {
   const rules = { continuation: true };
-  assert.equal(legalPlay([card(8)], card(7), rules), true);
-  assert.equal(legalPlay([card(8, 'clubs')], card(7), rules), false);
-  assert.equal(legalPlay([card(1)], card(13), rules), false);
-  assert.equal(legalPlay([card(1, 'joker')], card(0, 'joker'), rules), false);
+  assert.equal(legalPlay([card(7, 'clubs')], card(7), rules), true);
+  assert.equal(legalPlay([card(7)], card(7, 'spades'), rules), true);
+  assert.equal(legalPlay([card(5), card(5, 'spades')], card(5, 'clubs'), rules), true);
+  assert.equal(legalPlay([card(5), card(5, 'hearts', 'other-deck')], card(5, 'clubs'), rules), true);
+  assert.equal(legalPlay([card(5), card(6)], card(5, 'clubs'), rules), false);
+  assert.equal(legalPlay([card(5), card(5, 'spades')], card(9), rules), false);
+  assert.equal(legalPlay([card(8)], card(7), rules), false);
+  assert.equal(legalPlay([card(7)], undefined, rules), false);
+  assert.equal(legalPlay([card(0, 'joker', 'joker-2')], card(0, 'joker'), rules), false);
 });
 test('a legal turn drops a group, draws one, and advances exactly once', () => {
   const room = fixture();
@@ -266,14 +271,19 @@ test('expired full-hand turns skip unchanged and count towards unlocking show', 
   assert.equal(roomView(room, 'p1').showUnlocked, true);
   assert.match(room.lastAction, /skipped without drawing/);
 });
-test('expired turns below the limit still draw one card', () => {
-  const room = fixture();
-  hands(room, [[1, 2, 3, 4], [1], [2]]);
-  expireTurn(room);
-  assert.equal(room.players[0].hand.length, 5);
-  assert.equal(room.players[0].lives, 4);
-  assert.equal(room.turnId, 'p1');
-  assert.match(room.lastAction, /timer expired/);
+test('expired turns below the limit skip without drawing', () => {
+  for (const size of [3, 4]) {
+    const room = fixture();
+    hands(room, [[1, 2, 3, 4].slice(0, size), [1], [2]]);
+    const hand = [...room.players[0].hand];
+    const drawPile = [...room.drawPile];
+    expireTurn(room);
+    assert.deepEqual(room.players[0].hand, hand);
+    assert.deepEqual(room.drawPile, drawPile);
+    assert.equal(room.players[0].lives, 4);
+    assert.equal(room.turnId, 'p1');
+    assert.match(room.lastAction, /skipped without drawing.*timer expired/i);
+  }
 });
 test('five missed turns eliminate a player, preserve cards, and advance in seat order', () => {
   const room = fixture(4);
@@ -372,13 +382,96 @@ test('drop and discard pickup takes the old top, leaves dropped cards, and conse
 });
 test('discard pickups validate the drop against the old top before removing it', () => {
   const room = fixture();
-  hands(room, [[8], [2], [3]]);
+  hands(room, [[7], [2], [3]]);
   room.rules = { continuation: true };
   room.discardPile = [card(7, 'clubs', 'old-top')];
   room.lastPlay = [...room.discardPile];
   playTurn(room, 'p0', ['p0-0'], 'discard');
   assert.equal(room.players[0].hand.at(-1).id, 'old-top');
-  assert.equal(room.discardPile.at(-1).rank, 8);
+  assert.equal(room.discardPile.at(-1).id, 'p0-0');
+});
+test('continuation drop with no draw shrinks the hand and advances the turn', () => {
+  const room = fixture();
+  hands(room, [[9, 4], [2], [3]]);
+  room.rules = { ...DEFAULT_RULES, continuation: true };
+  room.discardPile = [card(9, 'hearts', 'top-9')];
+  room.lastPlay = [...room.discardPile];
+  const drawCount = room.drawPile.length;
+  playTurn(room, 'p0', ['p0-0'], 'none');
+  assert.equal(room.players[0].hand.length, 1);
+  assert.equal(room.drawPile.length, drawCount);
+  assert.equal(room.discardPile.at(-1).id, 'p0-0');
+  assert.deepEqual(room.lastPlay.map((entry) => entry.id), ['p0-0']);
+  assert.equal(room.turnId, 'p1');
+});
+test('continuation group drop with no draw sheds every matching card at once', () => {
+  const room = fixture();
+  hands(room, [[5, 5, 8], [2], [3]]);
+  room.rules = { anyCard: false, sameNumber: false, rummy: false, continuation: true };
+  room.discardPile = [card(5, 'hearts', 'top-5')];
+  room.lastPlay = [...room.discardPile];
+  const drawCount = room.drawPile.length;
+  playTurn(room, 'p0', ['p0-0', 'p0-1'], 'none');
+  assert.equal(room.players[0].hand.length, 1);
+  assert.equal(room.players[0].hand[0].rank, 8);
+  assert.equal(room.drawPile.length, drawCount);
+  assert.deepEqual(room.lastPlay.map((entry) => entry.id), ['p0-0', 'p0-1']);
+  assert.equal(room.turnId, 'p1');
+});
+test('going out by continuation locks in 0, keeps the round running, and skips the empty seat', () => {
+  const room = fixture();
+  hands(room, [[5, 5], [2, 9], [3, 8]]);
+  room.rules = { ...DEFAULT_RULES, continuation: true };
+  room.discardPile = [card(5, 'diamonds', 'top-5')];
+  room.lastPlay = [...room.discardPile];
+  playTurn(room, 'p0', ['p0-0', 'p0-1'], 'none');
+  assert.equal(room.status, 'playing');
+  assert.equal(room.players[0].hand.length, 0);
+  assert.match(room.lastAction, /locked in 0 points/);
+  assert.equal(room.turnId, 'p1');
+  playTurn(room, 'p1', ['p1-0']);
+  assert.equal(room.turnId, 'p2');
+  playTurn(room, 'p2', ['p2-0']);
+  assert.equal(room.turnId, 'p1');
+});
+test('shows compare only players still holding cards', () => {
+  const room = fixture();
+  hands(room, [[9, 9], [2, 3], [4, 5]]);
+  room.rules = { ...DEFAULT_RULES, continuation: true };
+  room.discardPile = [card(9, 'diamonds', 'top-9')];
+  room.lastPlay = [...room.discardPile];
+  playTurn(room, 'p0', ['p0-0', 'p0-1'], 'none');
+  const result = showHand(room, 'p1');
+  assert.equal(result.successful, true);
+  assert.equal(result.minimum, 5);
+  assert.deepEqual(result.scores.map((entry) => entry.penalty), [0, 0, 9]);
+});
+test('when only one player still holds cards the round settles with their hand value', () => {
+  const room = fixture(2);
+  hands(room, [[7, 7], [2, 6]]);
+  room.rules = { ...DEFAULT_RULES, continuation: true };
+  room.discardPile = [card(7, 'diamonds', 'top-7')];
+  room.lastPlay = [...room.discardPile];
+  playTurn(room, 'p0', ['p0-0', 'p0-1'], 'none');
+  assert.equal(room.status, 'roundEnd');
+  assert.deepEqual(room.players.map((player) => player.score), [0, 8]);
+  const result = room.results.at(-1);
+  assert.equal(result.showingId, null);
+  assert.deepEqual(result.scores.map((entry) => entry.penalty), [0, 8]);
+  assert.match(result.message, /last player holding cards/);
+});
+test('skipping the draw requires the continuation rule and a single matching rank', () => {
+  const room = fixture();
+  hands(room, [[9, 4], [2], [3]]);
+  room.discardPile = [card(9, 'hearts', 'top-9')];
+  room.lastPlay = [...room.discardPile];
+  const before = structuredClone(room);
+  assert.throws(() => playTurn(room, 'p0', ['p0-0'], 'none'), /Skip the draw/);
+  assert.deepEqual(room, before);
+  room.rules = { ...DEFAULT_RULES, continuation: true };
+  assert.throws(() => playTurn(room, 'p0', ['p0-1'], 'none'), /Skip the draw/);
+  assert.throws(() => playTurn(room, 'p0', [], 'none'), /Skip the draw/);
+  assert.throws(() => playTurn(room, 'p0', ['p0-0', 'p0-1'], 'none'), /not a legal play/);
 });
 test('taking the final discard leaves an empty discard safely and a later drop restores it', () => {
   const room = fixture();
@@ -649,6 +742,7 @@ test('table membership, full table, late join, and minimum player count are enfo
   const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { capacity: 3 });
   assert.throws(() => startRound(room, 'p0'), /2 players/);
   joinRoom(room, { id: 'p1', name: 'Player 1' });
+  assert.throws(() => startRound(room, 'p1'), /Every seat must be filled/);
   joinRoom(room, { id: 'p2', name: 'Player 2' });
   assert.throws(() => joinRoom(room, { id: 'p3', name: 'Player 3' }), /full/);
   assert.throws(() => startRound(room, 'p3'), /Join this table/);
@@ -657,8 +751,8 @@ test('table membership, full table, late join, and minimum player count are enfo
   assert.throws(() => startRound(room, 'p0'), /cannot start/);
   assert.throws(() => finishMatch(room, 'p0'), /current round/);
 });
-test('a non-host can deal once two players have joined', () => {
-  const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' });
+test('a non-host can deal once every seat is filled', () => {
+  const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { capacity: 2 });
   joinRoom(room, { id: 'p1', name: 'Player 1' });
   startRound(room, 'p1');
   assert.equal(room.status, 'playing');
@@ -728,4 +822,38 @@ test('waiting and completed matches cannot be aborted', () => {
     assert.throws(() => abortMatch(room, 'p0'), /no active match/);
     assert.deepEqual(room, before);
   }
+});
+test('no mix of plays, picks, timeouts, or continuations ever pushes a hand above 5 cards', () => {
+  const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { capacity: 3,
+    rules: { anyCard: true, sameNumber: true, rummy: true, continuation: true } });
+  joinRoom(room, { id: 'p1', name: 'Player 1' });
+  joinRoom(room, { id: 'p2', name: 'Player 2' });
+  startRound(room, 'p0');
+  const assertHands = (step) => room.players.forEach((player) => assert.ok(player.hand.length <= 5,
+    `step ${step}: ${player.id} holds ${player.hand.length} cards`));
+  for (let step = 0; step < 600 && room.status !== 'finished'; step++) {
+    if (room.status === 'roundEnd') {
+      startRound(room, room.players.find((player) => !player.eliminated).id);
+      continue;
+    }
+    const player = room.players.find((entry) => entry.id === room.turnId);
+    const roll = step % 10;
+    try {
+      if (roll === 9) {
+        expireTurn(room);
+      } else {
+        const cardIds = player.hand.slice(0, roll % 4).map((card) => card.id);
+        const source = roll % 3 === 0 ? 'drawPile' : roll % 3 === 1 ? 'discard' : 'none';
+        playTurn(room, player.id, cardIds, source);
+      }
+    } catch (error) {
+      if (!(error instanceof GameError)) throw error;
+      assertHands(step);
+      if (room.status === 'playing') playTurn(room, player.id, [player.hand[0].id]);
+    }
+    // Keep timeouts from eliminating anyone so the loop exercises long matches.
+    room.players.forEach((entry) => { if (!entry.eliminated) entry.lives = Math.max(entry.lives, 2); });
+    assertHands(step);
+  }
+  assertHands('final');
 });

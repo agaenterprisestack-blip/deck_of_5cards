@@ -67,8 +67,36 @@ export const rankLabel = (rank) => ({ 0: 'JK', 1: 'A', 11: 'J', 12: 'Q', 13: 'K'
 
 const suitKeys = { hearts: 'H', diamonds: 'D', clubs: 'C', spades: 'S' };
 const rankKeys = { 1: 'a', 11: 'j', 12: 'q', 13: 'k' };
+function JokerFace({ className }) {
+  const corner = <g fontFamily="Georgia, 'Times New Roman', serif" fontWeight="700" textAnchor="middle">
+    <text x="0" y="0" fontSize="10" fill="#204938">JK</text>
+    <text x="0" y="12" fontSize="9" fill="#df7952">★</text>
+  </g>;
+  return <svg className={className} viewBox="0 0 100 140" aria-hidden="true">
+    <rect width="100" height="140" fill="#fbf8ef" />
+    <rect x="6" y="6" width="88" height="128" rx="5" fill="none" stroke="#e2b781" strokeWidth="1.2" />
+    <g transform="translate(17 20)">{corner}</g>
+    <g transform="rotate(180 50 70) translate(17 20)">{corner}</g>
+    <circle cx="50" cy="66" r="27" fill="#204938" opacity=".07" />
+    {/* Jester hat: three floppy points with bells over a checked band */}
+    <path d="M32 80 C26 66 20 56 14 44 C26 50 36 60 44 78 Z" fill="#204938" />
+    <path d="M68 80 C74 66 80 56 86 44 C74 50 64 60 56 78 Z" fill="#204938" />
+    <path d="M40 80 C42 62 46 46 50 30 C54 46 58 62 60 80 Z" fill="#df7952" />
+    <circle cx="14" cy="44" r="4" fill="#e2b781" stroke="#b8894a" strokeWidth=".8" />
+    <circle cx="86" cy="44" r="4" fill="#e2b781" stroke="#b8894a" strokeWidth=".8" />
+    <circle cx="50" cy="29" r="4.4" fill="#e2b781" stroke="#b8894a" strokeWidth=".8" />
+    <rect x="29" y="78" width="42" height="10" rx="3" fill="#e2b781" />
+    {[0, 1, 2, 3, 4, 5].map((i) => <path key={i} d={`M${32 + i * 7} 83 l3 -3 l3 3 l-3 3 Z`}
+      fill={i % 2 ? '#df7952' : '#204938'} />)}
+    <text x="50" y="108" textAnchor="middle" fontFamily="Georgia, 'Times New Roman', serif" fontSize="15"
+      fontWeight="700" letterSpacing="2.5" fill="#204938">JOKER</text>
+    <text x="50" y="120" textAnchor="middle" fontFamily="Georgia, 'Times New Roman', serif" fontSize="7"
+      fontStyle="italic" fill="#a2884f">scores 0</text>
+  </svg>;
+}
+
 const faceFor = (card) => card.suit === 'joker'
-  ? deck.J1
+  ? JokerFace
   : deck[`${suitKeys[card.suit]}${rankKeys[card.rank] || card.rank}`];
 
 export function Card({ card, back = false, selected = false, onClick, small = false, style }) {
@@ -116,9 +144,9 @@ export const ruleLabels = {
 export function RulesContent() {
   return <div className="rules-content">
     <div className="rule-intro"><span className="rule-number">5</span><p>Five cards in your hand.<br /><strong>One goal: keep it low.</strong></p></div>
-    <section><h3>01 / Take your seat</h3><p>2–10 players. Everyone receives 5 cards and one card starts the discard pile. Seats follow join order clockwise; your own seat stays at the bottom of your screen. The dealer moves one active seat clockwise each round, and play begins with the next active player. 2–3 players use 1 deck, 4–5 use 2, 6–8 use 3, and 9–10 use 4. Each deck includes 2 jokers.</p></section>
-    <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings). Tap a selected card again to deselect it. Tap the draw pile or any one face-up card in the latest dropped group; your choice is highlighted. All cards in a multi-card drop are shown in the center. Confirm with Drop &amp; draw to take exactly one card, never a card you are dropping this turn. A new drop covers older groups. If you do not drop, the unclaimed cards in the latest group remain available; taking its last card does not uncover older cards. Covered cards are recycled when the draw pile runs out, while the whole visible group stays on the table. Drop &amp; draw stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: with 5 cards, tapping without selecting cards prompts you to select at least one to drop. Below 5, you may draw without dropping. If no visible discard remains, that choice is unavailable. Show hand stays on the left. Each player has 30 seconds per turn and 5 lives for the entire match. Every timeout costs one life. While lives remain, a hand with 5 cards is skipped unchanged, while a hand below 5 automatically takes one card from the draw pile; these turns count towards unlocking Show hand. On the fifth timeout, you are eliminated and stay as a spectator with chat access. Lives do not reset between rounds or after playing a turn. The last active player wins.</p>
-      <ul><li><strong>Any card:</strong> drop any single card.</li><li><strong>Same number:</strong> drop a group of equal ranks, or one card matching the top discard.</li><li><strong>Rummy:</strong> drop a set of 3–4 equal ranks in different suits. Mixed-rank runs are not allowed.</li><li><strong>Continuation:</strong> a single card one rank above the top discard in the same suit.</li></ul>
+    <section><h3>01 / Take your seat</h3><p>2–10 players. The first deal unlocks only when every seat at the table is filled; any seated player can then deal. Everyone receives 5 cards and one card starts the discard pile. Seats follow join order clockwise; your own seat stays at the bottom of your screen. The dealer moves one active seat clockwise each round, and play begins with the next active player. 2–3 players use 1 deck, 4–5 use 2, 6–8 use 3, and 9–10 use 4. Each deck includes 2 jokers.</p></section>
+    <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings). Tap a selected card again to deselect it. Tap the draw pile or any one face-up card in the latest dropped group; your choice is highlighted. All cards in a multi-card drop are shown in the center. Confirm with Drop &amp; draw to take exactly one card, never a card you are dropping this turn. A new drop covers older groups. If you do not drop, the unclaimed cards in the latest group remain available; taking its last card does not uncover older cards. Covered cards are recycled when the draw pile runs out, while the whole visible group stays on the table. Drop &amp; draw stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: with 5 cards, tapping without selecting cards prompts you to select at least one to drop. Below 5, you may draw without dropping. If no visible discard remains, that choice is unavailable. Show hand stays on the left. Each player has 15 seconds per turn and 5 lives for the entire match. Every timeout costs one life. While lives remain, a timed-out turn is skipped with your hand unchanged (no drop, no draw); these turns count towards unlocking Show hand. On the fifth timeout, you are eliminated and stay as a spectator with chat access. Lives do not reset between rounds or after playing a turn. The last active player wins.</p>
+      <ul><li><strong>Any card:</strong> drop any single card.</li><li><strong>Same number:</strong> drop a group of equal ranks, or one card matching the top discard.</li><li><strong>Rummy:</strong> drop a set of 3–4 equal ranks in different suits. Mixed-rank runs are not allowed.</li><li><strong>Continuation:</strong> drop one or more cards matching the top discard’s rank and skip the draw — tap No draw, or draw as usual if you prefer. Jokers cannot be continued. Dropping your last cards this way locks in 0 points for the round; the others play on, and when only one player still holds cards, the round ends and they add their hand value.</li></ul>
       <p>Aces are low. Jokers score 0 but are not wildcards. The host can toggle rules before creating a table.</p></section>
     <section><h3>03 / Know when to show</h3><p>Everyone must complete one turn in each dealt round before anyone can show. After that, you may show any hand value at the start of your turn. A unique lowest showing player adds 0; everyone else adds their own hand value. A wrong show adds 50 to the showing player, the lowest hand or tied lowest hands add 0, and every other player adds their own hand value. Points are added to cumulative match scores, not used to reset them.</p></section>
     <section><h3>04 / The long game</h3><p>At the table’s selected points limit (any whole number from 50 to 1,001; default 201), you are eliminated and can watch. The last player standing wins. After each round, the next round is dealt automatically following a 15-second countdown; only the first round needs the host to start it. Matches cannot be finished early at current scores. The host can still abort without saving scores. Finished or aborted matches do not restart. If all draw and recyclable discard cards run out, lowest hands get 0 and the others get +50.</p></section>

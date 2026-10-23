@@ -192,13 +192,20 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const viewerIndex = room.players.findIndex((player) => player.id === user.id);
   const opponents = viewerIndex < 0 ? room.players.filter((player) => player.id !== user.id)
     : [...room.players.slice(viewerIndex + 1), ...room.players.slice(0, viewerIndex)];
-  const emptySeats = isWaiting ? Math.max(0, 2 - room.players.length) : 0;
+  const emptySeats = isWaiting ? Math.max(0, room.capacity - room.players.length) : 0;
   const seatPositions = clockwiseSeatLayouts[opponents.length + emptySeats] || [];
   const turnPlayer = room.players.find((player) => player.id === room.turnId);
   const activeCount = room.players.filter((player) => !player.eliminated).length;
   function dropAndDraw(event) {
     if (!canAct) return;
-    if (me.hand.length - selected.length + 1 > 5) {
+    if (drawSource === 'none') {
+      const top = room.lastPlay.at(-1);
+      const selectedCards = selected.map((id) => me.hand.find((card) => card.id === id));
+      if (!top || top.rank === 0 || !selected.length || selectedCards.some((card) => card?.rank !== top.rank)) {
+        rejectAction(event.currentTarget, 'To skip the draw, drop only cards matching the last discard rank.');
+        return;
+      }
+    } else if (me.hand.length - selected.length + 1 > 5) {
       rejectAction(event.currentTarget, 'Select at least one card to drop before drawing. Your hand cannot exceed 5 cards.');
       return;
     }
@@ -291,8 +298,8 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
             {isWaiting && Array.from({ length: emptySeats }, (_, index) => <div className="opponent empty-seat" style={{ '--seat-x': `${seatAt(seatPositions, opponents.length + index)[0]}%`, '--seat-y': `${seatAt(seatPositions, opponents.length + index)[1]}%` }} key={`empty-${index}`}><span className="empty-seat-circle"><Icon name="plus" size={22} /></span><b>Seat open</b><span>Invite a friend</span></div>)}
           </div>
           <div className="table-center">
-            {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < 2 ? 'Waiting for 1 more player to begin.' : 'Ready to begin. Any seated player can deal the cards.'}</p>
-              <button className="button button-accent" disabled={room.players.length < 2 || busy || !connected}
+            {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < room.capacity ? `Waiting for ${room.capacity - room.players.length} more player${room.capacity - room.players.length === 1 ? '' : 's'} to fill the table.` : 'All seats are filled. Any seated player can deal the cards.'}</p>
+              <button className="button button-accent" disabled={room.players.length < room.capacity || busy || !connected}
                 onClick={(event) => sendGameAction('game:start', { revision: room.revision }, event.currentTarget)}><Icon name="cards" size={18} /> Deal the cards</button>
               <span className="table-player-count">{room.players.length} / {room.capacity} players at the table</span>
             </div> : isAborted ? <div className="finished-center"><span className="eyebrow">MATCH CANCELLED</span>
@@ -317,8 +324,11 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
                   aria-pressed={drawSource === 'discard' && discardCardId === card.id} disabled={!canAct}
                   onClick={() => { setDrawSource('discard'); setDiscardCardId(card.id); }}><Card card={card} /></button>)}
                 {!room.lastPlay.length && <div className="empty-discard">No discard</div>}
-              </div><span>LAST DROP{room.lastPlay.length > 1 ? ` · CHOOSE 1 OF ${room.lastPlay.length}` : ''}</span></div></div>
-              <p className="pile-choice-hint" role="status">{myTurn ? `Tap a pile to choose · ${drawSource === 'discard' ? 'Last discard selected' : 'Draw pile selected'}` : 'Choose a pile on your turn.'}</p>
+              </div><span>LAST DROP{room.lastPlay.length > 1 ? ` · CHOOSE 1 OF ${room.lastPlay.length}` : ''}</span></div>
+              {room.rules.continuation && <div>
+                <button type="button" className="pile-choice" aria-label="Skip drawing (continuation: drop cards matching the last discard rank)" aria-pressed={drawSource === 'none'} disabled={!canAct} onClick={() => { setDrawSource('none'); setDiscardCardId(null); }}><div className="empty-discard">NO DRAW</div></button>
+                <span>CONTINUATION</span></div>}</div>
+              <p className="pile-choice-hint" role="status">{myTurn ? `Tap a pile to choose · ${drawSource === 'discard' ? 'Last discard selected' : drawSource === 'none' ? 'No draw (continuation) selected' : 'Draw pile selected'}` : 'Choose a pile on your turn.'}</p>
               <div className={`turn-indicator ${myTurn ? 'your-turn' : ''}`}><span className="turn-dot" />{myTurn ? 'Your move. Make it count.' : `${turnPlayer?.name} has the turn`}<span className={seconds <= 3 ? 'timer-urgent' : ''}><Icon name="clock" size={14} />{seconds}s</span></div>
             </>}
           </div>
@@ -331,6 +341,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           <div className="your-cards">
             {isWaiting ? Array.from({ length: 5 }, (_, index) => <Card key={index} back small />) : [...(me?.hand || [])].sort((a, b) => a.rank - b.rank || a.suit.localeCompare(b.suit)).map((card) => <Card key={card.id} card={card} selected={selected.includes(card.id)} onClick={canAct ? (event) => selectCard(card, event) : undefined} />)}
             {me?.eliminated && <p className="muted">You’re out of this match. Stay for the conversation.</p>}
+            {room.status === 'playing' && me && !me.eliminated && !me.hand.length && <p className="muted">You dropped your last card — 0 points locked in. The round plays on without you.</p>}
           </div>
           {room.status === 'playing' && !me?.eliminated && <div className="hand-actions"><span className="selection-note" role="status">{selected.length ? `${selected.length} selected · Tap again to put back` : 'Tap cards to select. Tap again to put back.'}</span>
             <button className="button button-outline hand-show" disabled={!canAct} onClick={(event) => {
@@ -339,7 +350,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               sendGameAction('game:show', { revision: room.revision }, event.currentTarget);
             }}>Show hand</button>
             <button className="button button-dark hand-play" disabled={!canAct} onClick={dropAndDraw}>
-              {busy ? 'Playing…' : 'Drop & draw'}<Icon name="arrow" size={16} /></button>
+              {busy ? 'Playing…' : drawSource === 'none' ? 'Drop · no draw' : 'Drop & draw'}<Icon name="arrow" size={16} /></button>
           </div>}
           {room.lastAction && <p className="last-action" role="status"><span />{room.lastAction}</p>}
         </section>

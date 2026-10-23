@@ -30,14 +30,14 @@ const createSchema = z.object({
 const playSchema = z.object({
   revision: z.number().int().nonnegative(),
   cardIds: z.array(z.string().max(40)).max(54),
-  drawSource: z.enum(['drawPile', 'discard']).default('drawPile'),
+  drawSource: z.enum(['drawPile', 'discard', 'none']).default('drawPile'),
   discardCardId: z.string().min(1).max(40).optional(),
 });
 const revisionSchema = z.object({ revision: z.number().int().nonnegative() });
 const chatSchema = z.object({ text: z.string().trim().min(1).max(280) });
 const bearer = (request) => request.headers.authorization?.startsWith('Bearer ')
   ? request.headers.authorization.slice(7) : '';
-const TURN_MS = 30_000;
+const TURN_MS = 15_000;
 const ROUND_BREAK_MS = 15_000;
 const WAITING_TABLE_MS = 45 * 60_000;
 
