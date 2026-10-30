@@ -644,7 +644,7 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
     const blocked = await players[currentIndex].emit('game:play', { revision, cardIds: [], drawSource });
     assert.equal(blocked.ok, false);
     assert.equal(blocked.code, 'INVALID_ACTION');
-    assert.match(blocked.error, /cannot exceed 5 cards/);
+    assert.match(blocked.error, /at least one card/);
     assert.deepEqual(server.rooms.get(code), fullHandBefore);
   }
   assert.equal(players[currentIndex].state.room.showUnlocked, false);

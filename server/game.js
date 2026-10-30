@@ -217,6 +217,7 @@ export function playTurn(room, userId, cardIds, drawSource = 'drawPile', discard
     || new Set(cardIds).size !== cardIds.length) throw new GameError('Invalid card selection.');
   const cards = cardIds.map((id) => player.hand.find((card) => card.id === id));
   if (cards.some((card) => !card)) throw new GameError('Select only cards in your hand.');
+  if (!cards.length) throw new GameError('Select at least one card to drop before playing.');
   if (cards.length && !legalPlay(cards, room.lastPlay.at(-1), room.rules)) {
     throw new GameError('That combination is not a legal play.');
   }

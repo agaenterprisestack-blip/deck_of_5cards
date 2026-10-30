@@ -117,6 +117,76 @@ function WinnerCelebration({ winners, round, match = false }) {
   </section>;
 }
 
+const placeLabel = (place) => ['1st', '2nd', '3rd'][place - 1] || `${place}th`;
+
+// Final standings: winners first, then players still in, then lowest score.
+function matchStandings(room) {
+  const winners = new Set(room.winnerIds || []);
+  return room.players.map((player) => ({
+    ...player,
+    winner: winners.has(player.id),
+    zeroRounds: room.results.filter((result) =>
+      result.scores.some((entry) => entry.id === player.id && entry.penalty === 0)).length,
+  })).sort((a, b) => b.winner - a.winner || a.eliminated - b.eliminated || a.score - b.score
+    || a.name.localeCompare(b.name));
+}
+
+function MatchScorecard({ room, user, busy, notify, onClose, onLeave }) {
+  const standings = matchStandings(room);
+  const winners = standings.filter((player) => player.winner);
+  const rounds = room.results.length;
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const headline = winners.length
+    ? `${winners.map((player) => player.id === user.id ? 'You' : player.name).join(' & ')} ${winners.length > 1 || winners[0].id === user.id ? 'win' : 'wins'} the match!`
+    : 'Match complete';
+  async function copyResult() {
+    const lines = standings.map((player, index) =>
+      `${placeLabel(index + 1)}  ${player.name} · ${player.score} pts${player.winner ? ' 🏆' : player.eliminated ? ' (out)' : ''}`);
+    const text = [`5 Cards · ${room.name}`, headline, `${rounds} round${rounds === 1 ? '' : 's'} · out at ${room.pointsToEliminate} pts`, '', ...lines].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      notify('Scorecard copied. Paste it anywhere to share.');
+    } catch {
+      notify('Copy is not available here. Take a screenshot to share your scorecard.');
+    }
+  }
+  return <div className="scorecard-overlay" role="dialog" aria-modal="true" aria-labelledby="scorecard-title">
+    <section className="scorecard">
+      <header className="scorecard-head">
+        <span className="scorecard-trophy" aria-hidden="true"><Icon name="trophy" size={26} /></span>
+        <span className="scorecard-eyebrow">MATCH COMPLETE · {room.name}</span>
+        <h2 id="scorecard-title">{headline}</h2>
+        <div className="scorecard-stats">
+          <span><b>{rounds}</b>Round{rounds === 1 ? '' : 's'}</span>
+          <span><b>{room.players.length}</b>Players</span>
+          <span><b>{room.pointsToEliminate}</b>Out at</span>
+        </div>
+      </header>
+      <ol className="scorecard-list">
+        {standings.map((player, index) => <li key={player.id}
+          className={`scorecard-row ${player.winner ? 'is-winner' : ''} ${player.eliminated ? 'is-out' : ''} ${player.id === user.id ? 'is-you' : ''}`}>
+          <span className={`scorecard-place place-${index + 1}`}>{placeLabel(index + 1)}</span>
+          <Avatar name={player.name} index={room.players.findIndex((entry) => entry.id === player.id)} small />
+          <div className="scorecard-player">
+            <b>{player.name}{player.id === user.id ? ' (you)' : ''}</b>
+            <span>{player.winner ? 'Champion' : player.eliminated ? 'Eliminated' : 'Survived'} · {player.zeroRounds} zero round{player.zeroRounds === 1 ? '' : 's'}</span>
+          </div>
+          <span className="scorecard-points"><b>{player.score}</b>pts</span>
+        </li>)}
+      </ol>
+      <footer className="scorecard-actions">
+        <button className="button button-accent" disabled={busy} onClick={onLeave}>Back to the lobby <Icon name="arrow" size={17} /></button>
+        <button className="button button-outline" onClick={copyResult}><Icon name="copy" size={16} /> Copy result</button>
+        <button className="text-button" onClick={onClose}>View table</button>
+      </footer>
+    </section>
+  </div>;
+}
+
 function WrongShowNotice({ result }) {
   if (!result?.showingId || result.successful) return null;
   const showing = result.scores.find((entry) => entry.id === result.showingId);
@@ -148,6 +218,8 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const [discardCardId, setDiscardCardId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [scorecardOpen, setScorecardOpen] = useState(true);
+  useEffect(() => { if (room.status === 'finished') setScorecardOpen(true); }, [room.status]);
   const feedbackSequence = useRef(0);
   function rejectAction(element, message) {
     setActionFeedback({ id: ++feedbackSequence.current, message });
@@ -197,7 +269,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const turnPlayer = room.players.find((player) => player.id === room.turnId);
   const activeCount = room.players.filter((player) => !player.eliminated).length;
   function dropAndDraw(event) {
-    if (!canAct) return;
+    if (!canAct || !selected.length) return;
     if (drawSource === 'none') {
       const top = room.lastPlay.at(-1);
       const selectedCards = selected.map((id) => me.hand.find((card) => card.id === id));
@@ -309,6 +381,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               <WrongShowNotice result={currentResult} />
               <WinnerCelebration key={`match-${room.round}`} winners={room.winnerHands || []} round={room.round} match />
               {!room.winnerIds.length && <h2>Match complete. No players remain.</h2>}
+              <button className="button button-outline" onClick={() => setScorecardOpen(true)}><Icon name="trophy" size={16} /> Scorecard</button>
               <button className="button button-accent" disabled={busy} onClick={() => send('room:leave', {})}>Back to the lobby <Icon name="arrow" size={17} /></button>
             </div> : isRoundEnd ? <div className="waiting-center">
               <WrongShowNotice result={currentResult} />
@@ -349,8 +422,9 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               if (selected.length) { rejectAction(event.currentTarget, 'Deselect your cards before showing your hand.'); return; }
               sendGameAction('game:show', { revision: room.revision }, event.currentTarget);
             }}>Show hand</button>
-            <button className="button button-dark hand-play" disabled={!canAct} onClick={dropAndDraw}>
-              {busy ? 'Playing…' : drawSource === 'none' ? 'Drop · no draw' : 'Drop & draw'}<Icon name="arrow" size={16} /></button>
+            <button className="button button-dark hand-play" disabled={!canAct || !selected.length}
+              title={canAct && !selected.length ? 'Select at least one card to drop' : undefined} onClick={dropAndDraw}>
+              {busy ? 'Playing…' : 'Play'}<Icon name="arrow" size={16} /></button>
           </div>}
           {room.lastAction && <p className="last-action" role="status"><span />{room.lastAction}</p>}
         </section>
@@ -372,5 +446,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       {panel === 'chat' ? <Chat compact room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} />
         : panel === 'scores' ? <Scoreboard room={room} user={user} /> : <Results result={room.results.at(-1)} />}
     </Modal>}
+    {isFinished && scorecardOpen && <MatchScorecard room={room} user={user} busy={busy} notify={notify}
+      onClose={() => setScorecardOpen(false)} onLeave={() => send('room:leave', {})} />}
   </div>;
 }
