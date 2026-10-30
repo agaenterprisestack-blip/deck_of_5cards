@@ -38,7 +38,7 @@ const chatSchema = z.object({ text: z.string().trim().min(1).max(280) });
 const bearer = (request) => request.headers.authorization?.startsWith('Bearer ')
   ? request.headers.authorization.slice(7) : '';
 const TURN_MS = 15_000;
-const ROUND_BREAK_MS = 15_000;
+const ROUND_BREAK_MS = 10_000;
 const WAITING_TABLE_MS = 45 * 60_000;
 
 export function createApp({ store, clientOrigin = 'http://localhost:5173', production = false, trustProxy = false }) {

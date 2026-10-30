@@ -195,6 +195,24 @@ export default function App() {
     setPage(next);
     if (next !== 'play') setRefresh((value) => value + 1);
   }
+  // Two rising notes when the player's turn begins (only with game sound on).
+  function turnChime() {
+    const context = audioContext.current;
+    if (!sound || !context) return;
+    try {
+      [660, 880].forEach((frequency, index) => {
+        const start = context.currentTime + index * 0.13;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.connect(gain); gain.connect(context.destination);
+        oscillator.frequency.setValueAtTime(frequency, start);
+        gain.gain.setValueAtTime(0.06, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.22);
+        oscillator.start(start); oscillator.stop(start + 0.23);
+        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+      });
+    } catch { /* A missed chime should never interrupt play. */ }
+  }
   async function toggleSound() {
     if (sound) { setSound(false); return; }
     try {
@@ -237,7 +255,7 @@ export default function App() {
             setHeadlineIndex(nextHeadline);
             setPage('play'); notify(`Welcome to the table, ${currentUser.name}.`, 'success');
           }} />
-      </section> : page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} />
+      </section> : page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} onMyTurn={turnChime} />
         : <Lobby user={user} rooms={rooms} connected={connected} onCreate={() => setModal('create')} onJoin={(code) => send('room:join', { code })} onRules={() => setModal('rules')} onSignIn={signIn} headlineIndex={headlineIndex} />
         : dataError ? <section className="data-page"><h2>Couldn’t load this page.</h2><p role="alert" className="form-error">{dataError}</p><button className="button button-dark" onClick={() => setRefresh((value) => value + 1)}>Try again</button></section>
           : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <History entries={data} user={user} loading={dataLoading} />}

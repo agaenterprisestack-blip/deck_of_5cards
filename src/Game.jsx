@@ -207,7 +207,7 @@ function Results({ result }) {
   </div>;
 }
 
-export default function Game({ room, user, send, busy, connected, onRules, notify, notification }) {
+export default function Game({ room, user, send, busy, connected, onRules, notify, notification, onMyTurn }) {
   const [selected, setSelected] = useState([]);
   const [chatText, setChatText] = useState('');
   const [panel, setPanel] = useState(null);
@@ -256,6 +256,21 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const myTurn = room.turnId === user.id && room.status === 'playing';
   const canAct = myTurn && connected && !busy;
   const seconds = Math.max(0, Math.ceil((room.turnDeadline - now) / 1000));
+  // Announce the start of the player's turn: vibration, chime and tab title.
+  const wasMyTurn = useRef(false);
+  useEffect(() => {
+    if (myTurn && !wasMyTurn.current) {
+      onMyTurn?.();
+      try { navigator.vibrate?.([90, 60, 90]); } catch { /* unsupported */ }
+    }
+    wasMyTurn.current = myTurn;
+  }, [myTurn]);
+  useEffect(() => {
+    if (!myTurn) return;
+    const original = document.title;
+    document.title = '🔔 Your turn · 5 Cards';
+    return () => { document.title = original; };
+  }, [myTurn]);
   const nextRoundSeconds = Math.max(0, Math.ceil(((room.nextRoundDeadline ?? now) - now) / 1000));
   const isWaiting = room.status === 'waiting';
   const isFinished = room.status === 'finished';
@@ -312,7 +327,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const currentResult = lastResult?.round === room.round ? lastResult : null;
   const roundWinners = currentResult?.scores.filter((entry) => entry.penalty === 0) || [];
   const tableReactions = room.chat.filter((message) => reactions.some(([emoji]) => emoji === message.text)).slice(-30);
-  return <div className={`game-page table-experience ${controlsOpen ? 'table-controls-open' : ''} ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''}`}
+  return <div className={`game-page table-experience ${controlsOpen ? 'table-controls-open' : ''} ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''} ${myTurn ? 'my-turn' : ''} ${myTurn && seconds <= 5 ? 'my-turn-urgent' : ''}`}
     onTouchStart={(event) => {
       swipeStart.current = null;
       if (!mobile || panel || event.touches.length !== 1
@@ -358,6 +373,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
             return origin ? <TableReaction key={message.id} message={message} origin={origin} /> : null;
           })}</div>
           <div className="table-grain" />
+          <p className="sr-only" role="status">{myTurn ? 'It is your turn.' : ''}</p>
           <div className="opponents">
             {opponents.map((player, index) => <div key={player.id} style={{ '--seat-x': `${seatAt(seatPositions, index)[0]}%`, '--seat-y': `${seatAt(seatPositions, index)[1]}%` }} className={`opponent ${room.turnId === player.id ? 'opponent-active' : ''} ${player.eliminated ? 'eliminated' : ''}`}>
               <div className="opponent-avatar"><Avatar name={player.name} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} />

@@ -356,7 +356,7 @@ test('multiplayer validates discard choices and automatically deals after the ro
   await until(() => clients.every((client) => client.room?.status === 'roundEnd'));
   const ended = server.rooms.get(code);
   const deadline = ended.nextRoundDeadline;
-  assert.ok(deadline - Date.now() > 13_000 && deadline - Date.now() <= 15_000);
+  assert.ok(deadline - Date.now() > 8_000 && deadline - Date.now() <= 10_000);
   assert.equal(ended.turnDeadline, null);
   assert.ok(clients.every((client) => client.room.nextRoundDeadline === deadline));
   assert.equal((await clients[0].emit('game:start', { revision: ended.revision })).ok, false);
