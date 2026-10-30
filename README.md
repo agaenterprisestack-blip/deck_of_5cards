@@ -137,3 +137,13 @@ The automated integration suite uses the explicit in-memory store; production Po
 ## Credits
 
 Card faces are rendered with [`@letele/playing-cards`](https://www.npmjs.com/package/@letele/playing-cards), a React SVG deck released under **CC0-1.0** (public domain), derived from Adrian Kennard's classic print-ready card designs. The card back is this project's own artwork.
+
+## Android app (APK)
+
+The Android app is a [Capacitor](https://capacitorjs.com) shell that loads the hosted game from the Railway URL in [`capacitor.config.json`](capacitor.config.json), so it always shows whatever Railway is serving. Rebuild the APK only when that URL, the app name, or the icon changes.
+
+1. Requires Android SDK 36 and JDK 21 (`JAVA_HOME`).
+2. `npm run build && npx cap sync android`
+3. `cd android && ./gradlew assembleDebug`, then find the APK in `android/app/build/outputs/apk/debug/`.
+
+Icons and splash screens are generated from [`assets/`](assets) with `npx @capacitor/assets generate --android`.

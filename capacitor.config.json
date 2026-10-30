@@ -1,0 +1,12 @@
+{
+  "appId": "com.fivecards.game",
+  "appName": "5 Cards",
+  "webDir": "dist",
+  "server": {
+    "url": "https://deckof5cards-production.up.railway.app",
+    "cleartext": false
+  },
+  "android": {
+    "backgroundColor": "#191619"
+  }
+}

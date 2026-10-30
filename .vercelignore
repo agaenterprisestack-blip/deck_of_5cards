@@ -1,2 +1,4 @@
 server/
 test/
+android/
+capacitor.config.json
