@@ -23,9 +23,10 @@ const createSchema = z.object({
   name: z.string().trim().min(2).max(36),
   capacity: z.number().int().min(2).max(10),
   pointsToEliminate: z.number().int().min(50).max(1001).default(201),
+  showLimit: z.union([z.literal(5), z.literal(10), z.null()]).default(null),
   rules: z.object({
-    sameNumber: z.boolean(), rummy: z.boolean(), anyCard: z.boolean(), continuation: z.boolean(),
-  }).refine((rules) => Object.values(rules).some(Boolean), 'Enable at least one rule.'),
+    sameNumber: z.boolean(), rummy: z.boolean(), anyCard: z.boolean().optional(), continuation: z.boolean(),
+  }),
 });
 const playSchema = z.object({
   revision: z.number().int().nonnegative(),
@@ -101,7 +102,7 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
   const lobbyView = () => [...rooms.values()].map((room) => ({
     code: room.code, name: room.name, capacity: room.capacity, count: room.players.filter((player) => !player.left).length,
     status: room.status, host: room.players.find((p) => p.id === room.hostId)?.name,
-    rules: room.rules,
+    rules: room.rules, showLimit: room.showLimit ?? null,
   }));
   const broadcastLobby = () => io.emit('lobby', lobbyView());
   const broadcastRoom = (room) => {

@@ -19,7 +19,7 @@ Without `DATABASE_URL`, the server explicitly runs in **development memory mode*
 ## What is included
 
 - Username/password sign-up and login with case-insensitive unique usernames and revocable, seven-day opaque sessions held in tab-scoped storage. Passwords are salted and hashed with Node's asynchronous scrypt; plaintext passwords are never stored.
-- Multiple tables, configurable capacity and house rules, invitation codes, host controls. Any card and Same number are checked by default; Rummy and Continuation are unchecked and can be enabled by the table creator.
+- Multiple tables, configurable capacity and house rules, invitation codes, host controls. Any single card can always be dropped. Same number is checked by default; Rummy and Continuation are unchecked and can be enabled by the table creator.
 - Server-authoritative turns and scoring; clients receive only their own private hand.
 - The lobby headline cycles through three messages after each successful login, sign-up, or guest entry. The selected message stays the same during navigation and reloads in that browser tab.
 - Live presence, reconnecting seats, private table chat, and a 15-second turn timer that automatically advances play.
@@ -37,12 +37,12 @@ These resolve the original brief's unspecified details. They are also available 
 | Rule | Behavior |
 | --- | --- |
 | Setup | 2–3 players: 1 deck; 4–5: 2; 6–8: 3; 9–10: 4. Two jokers per deck. Deal five cards each and reveal one starter. Seats follow join order clockwise. Each player sees their own seat at the bottom while the same relative clockwise order is preserved. The dealer moves to the next active clockwise player each round, and play starts with the active player after the dealer. |
-| Any card | Drop any single card. |
+| Single card | Always allowed on every table: drop any one card. |
 | Same number | Drop a group of matching ranks (including duplicate suits across decks), or a single card matching the top discard's rank. |
-| Rummy | Drop a distinct-suit, same-rank set of 3–4. Mixed-rank runs are not allowed. Jokers are not wildcards. |
+| Rummy | Drop a same-suit run of 3–4 consecutive cards (for example 5♠ 6♠ 7♠), then draw one card as usual. Cards can be selected in any order. Aces are low (A-2-3), runs do not wrap from King to Ace. One Joker can stand in for any single missing card, such as Joker 2♠ 3♠ or 5♠ Joker 7♠. |
 | Continuation | Drop one or more cards all matching the top discard's rank and optionally skip the draw entirely (choose "No draw"). Jokers cannot be continued. Drawing normally with the same drop is still allowed. Emptying your hand this way locks in 0 points for the round and your seat is skipped; shows then compare only players still holding cards, and when just one player holds cards, the round ends and they add their hand value. |
 | Turn | Tap the draw pile or any one card in the latest face-up dropped group, then confirm with Play. All cards in a multi-card drop are visible and individually selectable; take exactly one, never a card you are dropping this turn. A new drop covers the previous group. Without a new drop, unclaimed cards in the latest group remain available; taking its final card does not uncover older cards. Every turn drops at least one card before taking one from either pile, so hands never exceed 5 cards. At timeout, the hand is skipped unchanged (no drop, no draw). |
-| Show | Unlocked after every active player completes one turn in each dealt round, including timed-out draws or skips. Show at the start of your turn with any hand value. A unique lowest showing player adds 0; others add their own hand values. |
+| Show | Allowed only when your hand is within the table's show limit (5 points, 10 points, or any value, chosen at table creation); the Show hand button appears only when you qualify. Unlocked after every active player completes one turn in each dealt round, including timed-out draws or skips. Show at the start of your turn with any hand value. A unique lowest showing player adds 0; others add their own hand values. |
 | Clash | If anyone matches the showing hand value, the showing player adds 50, the lowest hand or tied lowest hands add 0, and all other players add their own hand values. |
 | Beaten show | A showing player beaten by a lower hand adds 50; the lowest hand or tied lowest hands add 0, and all other players add their own hand values. |
 | Values | Joker 0, Ace 1, numbers face value, and Jack, Queen, and King 10 each. |
@@ -55,7 +55,7 @@ Round points are added to cumulative match scores; a round award of 0 does not r
 
 Everyone sees a centered winner celebration after each round and at match completion, with a trophy badge, winner names, green-highlighted cards, and a paper-confetti blast. Sixty red, cream, gold, and green paper pieces launch inward from both sides in three short bursts, then tumble and flutter down before fading. The effect ends after a few seconds and never blocks table controls. All players earning 0 round points share the round celebration, including matching players in a clash. A failed Show hand also displays a friendly "Wrong show" notice with a smiling sweat emoji, the showing player's name, the +50 penalty, and whether it was a clash or a lower opposing hand. Everyone sees this notice alongside the winners and countdown, including when the show ends the match; it is also included in Results. It clears from the table on the next deal. Final celebrations use the overall match winners, not the last round's winners. Round celebrations use already-revealed result cards; current match-winning hands are shared only when the match finishes, including timeout victories. Active hands otherwise remain private. Reduced-motion preferences disable the animation. Full round details remain available in Results.
 
-Select one card or multiple cards of the same number/face only (for example, two 7s or two Kings). Tap selected cards to deselect them before choosing a different rank. **Show hand** is on the left; **Play** always remains on the right. It is enabled on your connected turn once at least one card is selected, and disabled while submitting, disconnected, or on another player's turn. Both controls have at least 44px touch targets on mobile. Server validation also rejects mixed-rank multi-card drops.
+Select one card or multiple cards of the same number/face (for example, two 7s or two Kings), or with Rummy on, a same-suit run of 3–4 cards. Tap selected cards to deselect them before choosing a different rank. **Show hand** is on the left; **Play** always remains on the right. It is enabled on your connected turn once at least one card is selected, and disabled while submitting, disconnected, or on another player's turn. Both controls have at least 44px touch targets on mobile. Server validation also rejects mixed-rank multi-card drops.
 
 Gameplay uses an original green-felt, wood-edged table with player seats around the perimeter, compact draw/discard piles in a non-scrolling center, and your hand along the bottom. On phones and tablets up to 1100px wide, play in landscape: a fixed right-hand icon rail opens Chat, Scores, Rules, and (after a round) Results without page scrolling. The top heading, table code, Leave, and host Abort controls are hidden by default so the table uses the available height. Swipe down on a non-interactive part of the table, or tap the small top pull handle, to reveal them. Swipe up or use Hide table controls to reclaim the space. Swiping on buttons, cards, or dialogs does not toggle the header. Desktop keeps its normal visible heading. Portrait screens display a rotation prompt. Panels have their own scroll area and a close button; chat drafts survive closing and reopening. Tap a selected card again to return it to its resting position. Player portraits use initials rather than external photos; remaining lives and the 15-second timer remain visible. On mobile, a compact card-icon/count badge beside each active opponent's avatar shows their current hand size without moving seats or revealing card faces. Badges are hidden before dealing and for eliminated players.
 
@@ -134,9 +134,9 @@ Node's built-in test runner covers deck sizes for all player counts, legal/illeg
 
 The automated integration suite uses the explicit in-memory store; production PostgreSQL connectivity and cloud configuration must be verified against your own database.
 
-## Credits
+## Card design
 
-Card faces are rendered with [`@letele/playing-cards`](https://www.npmjs.com/package/@letele/playing-cards), a React SVG deck released under **CC0-1.0** (public domain), derived from Adrian Kennard's classic print-ready card designs. The card back is this project's own artwork.
+All card faces, the Joker, and the card back are this project's own SVG artwork, drawn in [`src/components.jsx`](src/components.jsx). Cards use large corner ranks and suits so they stay readable on phones.
 
 ## Android app (APK)
 

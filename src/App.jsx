@@ -37,24 +37,28 @@ function AuthForm({ signup, onSwitch, onAuthenticated }) {
 }
 
 function CreateForm({ send, busy, onDone }) {
-  const [rules, setRules] = useState({ anyCard: true, sameNumber: true, rummy: false, continuation: false });
+  const [rules, setRules] = useState({ sameNumber: true, rummy: false, continuation: false });
   const [capacity, setCapacity] = useState(5);
+  const [showLimit, setShowLimit] = useState(null);
   return <form className="form-stack" onSubmit={async (event) => {
     event.preventDefault();
     const name = new FormData(event.currentTarget).get('name');
     const pointsToEliminate = Number(new FormData(event.currentTarget).get('pointsToEliminate'));
-    if (await send('room:create', { name, capacity, pointsToEliminate, rules })) onDone();
+    if (await send('room:create', { name, capacity, pointsToEliminate, showLimit, rules })) onDone();
   }}>
     <label>Table name<input name="name" placeholder="The usual suspects" minLength={2} maxLength={36} required autoFocus /></label>
     <label>Seats at the table<span className="capacity-picker">{Array.from({ length: 9 }, (_, i) => i + 2).map((count) =>
       <button key={count} type="button" aria-pressed={capacity === count} className={capacity === count ? 'active' : ''} onClick={() => setCapacity(count)}>{count}</button>)}</span></label>
     <label>Points to eliminate<input name="pointsToEliminate" type="number" min={50} max={1001} step={1} defaultValue={201} required aria-describedby="points-help" /></label>
     <p id="points-help" className="fine-print">Enter a whole number from 50 to 1,001. Players are eliminated when their score reaches this limit.</p>
+    <label>Show hand limit<span className="capacity-picker">{[[5, '5 pts'], [10, '10 pts'], [null, 'Any']].map(([limit, label]) =>
+      <button key={label} type="button" aria-pressed={showLimit === limit} className={showLimit === limit ? 'active' : ''} onClick={() => setShowLimit(limit)}>{label}</button>)}</span></label>
+    <p className="fine-print">{showLimit ? `Players can Show hand only when their hand is ${showLimit} points or less.` : 'Players can Show hand at any hand value. It is up to them when to show.'}</p>
     <fieldset className="rule-options"><legend>Your house rules</legend>{Object.entries(rules).map(([rule, enabled]) => <label key={rule}>
       <span>{ruleLabels[rule]}</span><input type="checkbox" checked={enabled} onChange={(event) => setRules((previous) => ({ ...previous, [rule]: event.target.checked }))} />
     </label>)}</fieldset>
     <p className="fine-print">At least 2 players to begin. The deck count adjusts automatically. Share the code after creating your table.</p>
-    <button className="button button-dark button-full" disabled={busy || !Object.values(rules).some(Boolean)}>{busy ? 'Setting the table…' : 'Create my table'}<Icon name="arrow" size={17} /></button>
+    <button className="button button-dark button-full" disabled={busy}>{busy ? 'Setting the table…' : 'Create my table'}<Icon name="arrow" size={17} /></button>
   </form>;
 }
 

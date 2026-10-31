@@ -185,16 +185,29 @@ test('same-number groups support duplicate suits across decks and matching singl
   assert.equal(legalPlay([card(5)], card(5, 'clubs'), rules), true);
   assert.equal(legalPlay([card(4)], card(5), rules), false);
 });
-test('rummy accepts only distinct-suit same-rank sets, not mixed-rank runs', () => {
+test('rummy accepts 3–4 card same-suit runs in any order, with at most one Joker wildcard', () => {
   const rules = { rummy: true };
-  assert.equal(legalPlay([card(3), card(1), card(2)], card(9), rules), false);
-  assert.equal(legalPlay([card(6), card(6, 'clubs'), card(6, 'spades')], card(9), rules), true);
-  assert.equal(legalPlay([card(6), card(6), card(6, 'spades')], card(9), rules), false);
+  assert.equal(legalPlay([card(5), card(6), card(7)], card(9), rules), true);
+  assert.equal(legalPlay([card(3), card(1), card(2)], card(9), rules), true);
+  assert.equal(legalPlay([card(10, 'spades'), card(11, 'spades'), card(12, 'spades'), card(13, 'spades')], card(9), rules), true);
+  assert.equal(legalPlay([card(6), card(6, 'clubs'), card(6, 'spades')], card(9), rules), false);
   assert.equal(legalPlay([card(1), card(2)], card(9), rules), false);
+  assert.equal(legalPlay([card(1), card(2), card(3), card(4), card(5)], card(9), rules), false);
   assert.equal(legalPlay([card(1), card(2, 'clubs'), card(3)], card(9), rules), false);
+  assert.equal(legalPlay([card(5), card(6), card(8)], card(9), rules), false);
   assert.equal(legalPlay([card(12), card(13), card(1)], card(9), rules), false);
-  assert.equal(legalPlay([card(0), card(1), card(2)], card(9), rules), false);
-  assert.equal(legalPlay([card(2), card(2), card(3)], card(9), rules), false);
+  assert.equal(legalPlay([card(0, 'joker'), card(2), card(3)], card(9), rules), true);
+  assert.equal(legalPlay([card(5), card(0, 'joker'), card(7)], card(9), rules), true);
+  assert.equal(legalPlay([card(12), card(13), card(0, 'joker')], card(9), rules), true);
+  assert.equal(legalPlay([card(1), card(0, 'joker'), card(4), card(3)], card(9), rules), true);
+  assert.equal(legalPlay([card(0, 'joker'), card(2), card(5)], card(9), rules), false);
+  assert.equal(legalPlay([card(0, 'joker'), card(2), card(3, 'spades')], card(9), rules), false);
+  assert.equal(legalPlay([card(0, 'joker', 'j1'), card(0, 'joker', 'j2'), card(3)], card(9), rules), false);
+  assert.equal(legalPlay([card(0, 'joker', 'j1'), card(0, 'joker', 'j2'), card(3), card(4)], card(9), rules), false);
+  assert.equal(legalPlay([card(0, 'joker'), card(4), card(4, 'hearts', 'dup')], card(9), rules), false);
+  assert.equal(legalPlay([card(2), card(2, 'hearts', 'dup'), card(3)], card(9), rules), false);
+  assert.equal(legalPlay([card(5), card(6), card(7)], card(9), { sameNumber: true }), false);
+  assert.equal(legalPlay([card(7), card(7, 'clubs')], card(9), { sameNumber: true, rummy: true }), true);
 });
 test('continuation allows one or more cards matching the top rank in any suit, but not Jokers', () => {
   const rules = { continuation: true };
@@ -545,14 +558,14 @@ test('fully exhausted piles settle lowest hands including ties, without a show p
   assert.deepEqual(room.players.map((player) => player.score), [0, 0, 50]);
   assert.equal(room.results[0].showingId, null);
 });
-test('every card in the latest same-number or rummy group can be chosen exactly once', () => {
+test('every card in the latest same-number group or rummy run can be chosen exactly once', () => {
   for (const size of [2, 3, 4, 5]) {
     for (let chosen = 0; chosen < size; chosen++) {
       for (const rummyOnly of [false, true]) {
         if (rummyOnly && (size < 3 || size > 4)) continue;
         const room = fixture();
-        hands(room, [Array(size).fill(7), [2], [3]]);
-        room.players[0].hand.forEach((entry, index) => { entry.suit = ['clubs', 'diamonds', 'hearts', 'spades', 'clubs'][index]; });
+        hands(room, [rummyOnly ? [5, 6, 7, 8].slice(0, size) : Array(size).fill(7), [2], [3]]);
+        if (!rummyOnly) room.players[0].hand.forEach((entry, index) => { entry.suit = ['clubs', 'diamonds', 'hearts', 'spades', 'clubs'][index]; });
         room.rules = rummyOnly ? { rummy: true, anyCard: true } : { sameNumber: true, anyCard: true };
         const group = [...room.players[0].hand];
         playTurn(room, 'p0', group.map((entry) => entry.id));
@@ -847,4 +860,25 @@ test('no mix of plays, picks, timeouts, or continuations ever pushes a hand abov
     assertHands(step);
   }
   assertHands('final');
+});
+test('show limit blocks shows above the limit, allows at or below it, and defaults to any value', () => {
+  for (const limit of [5, 10]) {
+    const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { capacity: 3, showLimit: limit });
+    joinRoom(room, { id: 'p1', name: 'Player 1' });
+    joinRoom(room, { id: 'p2', name: 'Player 2' });
+    startRound(room, 'p0');
+    assert.equal(roomView(room, 'p0').showLimit, limit);
+    hands(room, [[limit, 1], [9, 9], [8, 8]]);
+    const before = structuredClone(room);
+    assert.throws(() => showHand(room, 'p0'), new RegExp(`only at ${limit} points or less`));
+    assert.deepEqual(room, before);
+    hands(room, [[limit], [9, 9], [8, 8]]);
+    assert.equal(showHand(room, 'p0').successful, true);
+  }
+  const open = fixture();
+  assert.equal(roomView(open, 'p0').showLimit, null);
+  hands(open, [[13, 12], [13, 13, 13], [13, 13, 13]]);
+  assert.equal(showHand(open, 'p0').successful, true);
+  const invalid = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { showLimit: 7 });
+  assert.equal(invalid.showLimit, null);
 });

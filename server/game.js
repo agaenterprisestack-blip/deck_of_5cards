@@ -44,6 +44,22 @@ export const handValue = (hand) => hand.reduce(
 export const isContinuationPlay = (cards, top, rules) => Boolean(rules.continuation
   && cards.length && top && top.rank > 0 && cards.every((card) => card.rank === top.rank));
 
+// Rummy run: 3–4 consecutive ranks in one suit, such as 5♠ 6♠ 7♠.
+// Aces are low (A-2-3) and runs do not wrap past King. One Joker may stand in
+// for any single missing card: Joker 2♠ 3♠ or 5♠ Joker 7♠.
+export function isRummyRun(cards) {
+  if (cards.length < 3 || cards.length > 4) return false;
+  const jokers = cards.filter((card) => card.rank === 0).length;
+  const naturals = cards.filter((card) => card.rank > 0);
+  if (jokers > 1 || naturals.some((card) => card.suit !== naturals[0].suit)) return false;
+  const ranks = naturals.map((card) => card.rank).sort((a, b) => a - b);
+  if (new Set(ranks).size !== ranks.length) return false;
+  // Cards missing between the lowest and highest natural card must be covered by the Joker.
+  // A Joker that extends either end always fits, because a run is at most 4 of 13 ranks.
+  const gaps = ranks.at(-1) - ranks[0] + 1 - ranks.length;
+  return gaps <= jokers;
+}
+
 export function legalPlay(cards, top, rules) {
   if (!cards.length) return false;
   if (isContinuationPlay(cards, top, rules)) return true;
@@ -51,12 +67,8 @@ export function legalPlay(cards, top, rules) {
     return Boolean(rules.anyCard
       || (rules.sameNumber && top && cards[0].rank === top.rank));
   }
-  if (!cards.every((card) => card.rank === cards[0].rank)) return false;
-  if (rules.sameNumber) return true;
-  if (!rules.rummy || cards.length < 3) return false;
-  const set = cards.every((card) => card.rank > 0 && card.rank === cards[0].rank)
-    && new Set(cards.map((card) => card.suit)).size === cards.length;
-  return set;
+  if (rules.rummy && isRummyRun(cards)) return true;
+  return Boolean(rules.sameNumber && cards.every((card) => card.rank === cards[0].rank));
 }
 
 export function createRoom(code, host, options = {}) {
@@ -66,7 +78,10 @@ export function createRoom(code, host, options = {}) {
     hostId: host.id,
     capacity: options.capacity || 5,
     pointsToEliminate: options.pointsToEliminate || 201,
-    rules: { ...DEFAULT_RULES, ...options.rules },
+    // Highest hand value allowed to Show hand: 5, 10, or null for any value.
+    showLimit: [5, 10].includes(options.showLimit) ? options.showLimit : null,
+    // Any single card can always be dropped, so every player has a legal move.
+    rules: { ...DEFAULT_RULES, ...options.rules, anyCard: true },
     players: [{ id: host.id, name: host.name, score: 0, hand: [], eliminated: false, lives: 5 }],
     status: 'waiting',
     round: 0,
@@ -320,6 +335,9 @@ export function showHand(room, userId) {
   if (!active.every((player) => room.completedTurnIds.includes(player.id))) {
     throw new GameError('Everyone must complete one turn this round before showing.');
   }
+  if (room.showLimit != null && value > room.showLimit) {
+    throw new GameError(`This table allows Show hand only at ${room.showLimit} points or less.`);
+  }
   // Players who went out by continuation hold empty hands: they score 0 and
   // are excluded from the show comparison.
   const contenders = active.filter((player) => player.hand.length);
@@ -363,7 +381,7 @@ export function finishMatch(room, userId) {
 export function roomView(room, viewerId, connectedIds = new Set()) {
   return {
     code: room.code, name: room.name, hostId: room.hostId, capacity: room.capacity,
-    pointsToEliminate: room.pointsToEliminate, rules: room.rules, status: room.status, round: room.round, turnId: room.turnId,
+    pointsToEliminate: room.pointsToEliminate, showLimit: room.showLimit ?? null, rules: room.rules, status: room.status, round: room.round, turnId: room.turnId,
     revision: room.revision, nextRoundDeadline: room.nextRoundDeadline ?? null,
     deckCount: deckCount(room.players.filter((p) => !p.eliminated).length),
     showUnlocked: room.status === 'playing' && room.players

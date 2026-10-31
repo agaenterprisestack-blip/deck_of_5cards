@@ -47,7 +47,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
         <div className="room-list">
           {filtered.map((room, index) => <article className="room-list-item" key={room.code}>
             <span className={`table-symbol symbol-${index % 3}`}>{['♠', '♥', '♣'][index % 3]}</span>
-            <div className="room-description"><h3>{room.name}</h3><p>Hosted by {room.host}<span> · </span>{Object.entries(room.rules).filter(([, enabled]) => enabled).map(([rule]) => ruleLabels[rule]).slice(0, 2).join(' + ')}</p></div>
+            <div className="room-description"><h3>{room.name}</h3><p>Hosted by {room.host}<span> · </span>{Object.entries(room.rules).filter(([rule, enabled]) => enabled && rule !== 'anyCard').map(([rule]) => ruleLabels[rule]).slice(0, 2).join(' + ') || 'Single cards only'}{room.showLimit != null && <><span> · </span>Show ≤ {room.showLimit}</>}</p></div>
             <div className="room-occupancy"><Icon name="users" size={17} /><b>{room.count}</b><span>/ {room.capacity}</span></div>
             <button className="button button-outline button-small" disabled={room.count >= room.capacity}
               onClick={() => user ? onJoin(room.code) : onSignIn()}>{room.count >= room.capacity ? 'Full' : 'Join table'}<Icon name="arrow" size={15} /></button>

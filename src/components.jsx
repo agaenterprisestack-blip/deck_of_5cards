@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import * as deck from '@letele/playing-cards';
 
 const iconPaths = {
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
@@ -69,47 +68,66 @@ export function Avatar({ name = '?', index = 0, small = false }) {
 
 export const rankLabel = (rank) => ({ 0: 'JK', 1: 'A', 11: 'J', 12: 'Q', 13: 'K' })[rank] || rank;
 
-const suitKeys = { hearts: 'H', diamonds: 'D', clubs: 'C', spades: 'S' };
-const rankKeys = { 1: 'a', 11: 'j', 12: 'q', 13: 'k' };
-function JokerFace({ className }) {
-  const corner = <g fontFamily="Georgia, 'Times New Roman', serif" fontWeight="700" textAnchor="middle">
-    <text x="0" y="0" fontSize="10" fill="#204938">JK</text>
-    <text x="0" y="12" fontSize="9" fill="#df7952">★</text>
-  </g>;
-  return <svg className={className} viewBox="0 0 100 140" aria-hidden="true">
-    <rect width="100" height="140" fill="#fbf8ef" />
-    <rect x="6" y="6" width="88" height="128" rx="5" fill="none" stroke="#e2b781" strokeWidth="1.2" />
-    <g transform="translate(17 20)">{corner}</g>
-    <g transform="rotate(180 50 70) translate(17 20)">{corner}</g>
-    <circle cx="50" cy="66" r="27" fill="#204938" opacity=".07" />
-    {/* Jester hat: three floppy points with bells over a checked band */}
-    <path d="M32 80 C26 66 20 56 14 44 C26 50 36 60 44 78 Z" fill="#204938" />
-    <path d="M68 80 C74 66 80 56 86 44 C74 50 64 60 56 78 Z" fill="#204938" />
-    <path d="M40 80 C42 62 46 46 50 30 C54 46 58 62 60 80 Z" fill="#df7952" />
-    <circle cx="14" cy="44" r="4" fill="#e2b781" stroke="#b8894a" strokeWidth=".8" />
-    <circle cx="86" cy="44" r="4" fill="#e2b781" stroke="#b8894a" strokeWidth=".8" />
-    <circle cx="50" cy="29" r="4.4" fill="#e2b781" stroke="#b8894a" strokeWidth=".8" />
-    <rect x="29" y="78" width="42" height="10" rx="3" fill="#e2b781" />
-    {[0, 1, 2, 3, 4, 5].map((i) => <path key={i} d={`M${32 + i * 7} 83 l3 -3 l3 3 l-3 3 Z`}
-      fill={i % 2 ? '#df7952' : '#204938'} />)}
-    <text x="50" y="108" textAnchor="middle" fontFamily="Georgia, 'Times New Roman', serif" fontSize="15"
-      fontWeight="700" letterSpacing="2.5" fill="#204938">JOKER</text>
-    <text x="50" y="120" textAnchor="middle" fontFamily="Georgia, 'Times New Roman', serif" fontSize="7"
-      fontStyle="italic" fill="#a2884f">scores 0</text>
+const suitSymbols = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+const cardSerif = "Georgia, 'Times New Roman', serif";
+
+const skin = '#f4d3b5';
+const skinLine = '#c99a76';
+const gold = '#e0a93a';
+const goldLine = '#a87a2c';
+
+// Card face built for small screens: one large top-left rank and suit (no
+// upside-down corner, so 6 and 9 never get confused) and one big center suit.
+function CardFace({ card, className }) {
+  const red = ['hearts', 'diamonds'].includes(card.suit);
+  const color = red ? '#cf2435' : '#1b1d21';
+  const suit = suitSymbols[card.suit];
+  const label = String(rankLabel(card.rank));
+  return <svg className={className} viewBox="0 0 100 144" aria-hidden="true">
+    <rect width="100" height="144" fill="#fff" />
+    <rect x="3" y="3" width="94" height="138" rx="7" fill="none" stroke="#e7e2d8" strokeWidth="1.2" />
+    <g fill={color} fontFamily={cardSerif} fontWeight="700" textAnchor="middle">
+      <text x="17" y="35" fontSize={label.length > 1 ? 29 : 35} letterSpacing={label.length > 1 ? -2.5 : 0}>{label}</text>
+      <text x="17" y="62" fontSize="27">{suit}</text>
+    </g>
+    <text x="58" y={card.rank === 1 ? 118 : 112} textAnchor="middle" fontSize={card.rank === 1 ? 72 : 60} fill={color}>{suit}</text>
   </svg>;
 }
 
-const faceFor = (card) => card.suit === 'joker'
-  ? JokerFace
-  : deck[`${suitKeys[card.suit]}${rankKeys[card.rank] || card.rank}`];
+// Joker: same layout as the other cards, with a jester portrait.
+function JokerFace({ className }) {
+  const purple = '#6a3fa0';
+  const green = '#1f8a5b';
+  return <svg className={className} viewBox="0 0 100 144" aria-hidden="true">
+    <rect width="100" height="144" fill="#fff" />
+    <rect x="3" y="3" width="94" height="138" rx="7" fill="none" stroke="#e7e2d8" strokeWidth="1.2" />
+    <rect x="35" y="14" width="57" height="122" rx="9" fill="#f5effb" stroke={purple} strokeWidth="1.4" />
+    <path d="M39 132 C39 110 50 102 63 102 C76 102 87 110 87 132 Z" fill={green} />
+    <path d="M62 102 L62 132" stroke={purple} strokeWidth="6" />
+    <path d="M40 101 L45 109 L50 101 L55 109 L60 101 L65 109 L70 101 L75 109 L80 101 L84 106 L40 106 Z" fill="#fff" stroke={purple} strokeWidth="1" strokeLinejoin="round" />
+    <circle cx="62" cy="86" r="12.5" fill={skin} stroke={skinLine} strokeWidth="1" />
+    <circle cx="57.5" cy="84" r="1.4" fill="#2b2523" /><circle cx="66.5" cy="84" r="1.4" fill="#2b2523" />
+    <circle cx="54.5" cy="89" r="2.2" fill="#f08a96" opacity=".7" /><circle cx="69.5" cy="89" r="2.2" fill="#f08a96" opacity=".7" />
+    <path d="M56 90 Q62 96 68 90" stroke="#c0283a" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+    <path d="M50 76 C46 65 42 57 40 49 C47 53 53 60 57 72 Z" fill={purple} />
+    <path d="M74 76 C78 65 82 57 84 49 C77 53 71 60 67 72 Z" fill={green} />
+    <path d="M54 74 C56 58 59 44 62 30 C65 44 68 58 70 74 Z" fill={purple} />
+    <path d="M62 30 C65 44 68 58 70 74 L62 74 Z" fill={green} />
+    <rect x="48" y="70" width="28" height="7" rx="3" fill={gold} stroke={goldLine} strokeWidth=".8" />
+    <g fill={gold} stroke={goldLine} strokeWidth=".8"><circle cx="40" cy="48" r="3.6" /><circle cx="84" cy="48" r="3.6" /><circle cx="62" cy="29" r="3.8" /></g>
+    <g fill={purple} fontFamily={cardSerif} fontWeight="700" textAnchor="middle">
+      <text x="17" y="33" fontSize="25" letterSpacing="-2">JK</text>
+      <text x="17" y="58" fontSize="22" fill={gold}>★</text>
+    </g>
+  </svg>;
+}
 
 export function Card({ card, back = false, selected = false, onClick, small = false, style }) {
   const joker = !back && card?.suit === 'joker';
   const className = `playing-card ${back ? 'card-back' : ''} ${small ? 'card-small' : ''} ${selected ? 'card-selected' : ''} ${joker ? 'card-joker' : ''} ${['hearts', 'diamonds'].includes(card?.suit) ? 'card-red' : ''}`;
-  const Face = back ? null : faceFor(card);
   const face = back
     ? <span className="card-back-pattern"><span>5<span>♠</span></span></span>
-    : <Face className="card-face-art" />;
+    : joker ? <JokerFace className="card-face-art" /> : <CardFace card={card} className="card-face-art card-face-custom" />;
   return onClick
     ? <button className={className} style={style} onClick={onClick} aria-pressed={selected}
       aria-label={`${joker ? 'Joker' : `${rankLabel(card.rank)} of ${card.suit}`}${selected ? ', selected' : ''}`}>{face}</button>
@@ -149,10 +167,10 @@ export function RulesContent() {
   return <div className="rules-content">
     <div className="rule-intro"><span className="rule-number">5</span><p>Five cards in your hand.<br /><strong>One goal: keep it low.</strong></p></div>
     <section><h3>01 / Take your seat</h3><p>2–10 players. The first deal unlocks only when every seat at the table is filled; any seated player can then deal. Everyone receives 5 cards and one card starts the discard pile. Seats follow join order clockwise; your own seat stays at the bottom of your screen. The dealer moves one active seat clockwise each round, and play begins with the next active player. 2–3 players use 1 deck, 4–5 use 2, 6–8 use 3, and 9–10 use 4. Each deck includes 2 jokers.</p></section>
-    <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings). Tap a selected card again to deselect it. Tap the draw pile or any one face-up card in the latest dropped group; your choice is highlighted. All cards in a multi-card drop are shown in the center. Confirm with Play to take exactly one card, never a card you are dropping this turn. A new drop covers older groups. If you do not drop, the unclaimed cards in the latest group remain available; taking its last card does not uncover older cards. Covered cards are recycled when the draw pile runs out, while the whole visible group stays on the table. Play stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: every turn you must drop at least one card, so Play stays disabled until you select one. If no visible discard remains, that choice is unavailable. Show hand stays on the left. Each player has 15 seconds per turn and 5 lives for the entire match. Every timeout costs one life. While lives remain, a timed-out turn is skipped with your hand unchanged (no drop, no draw); these turns count towards unlocking Show hand. On the fifth timeout, you are eliminated and stay as a spectator with chat access. Lives do not reset between rounds or after playing a turn. The last active player wins.</p>
-      <ul><li><strong>Any card:</strong> drop any single card.</li><li><strong>Same number:</strong> drop a group of equal ranks, or one card matching the top discard.</li><li><strong>Rummy:</strong> drop a set of 3–4 equal ranks in different suits. Mixed-rank runs are not allowed.</li><li><strong>Continuation:</strong> drop one or more cards matching the top discard’s rank and skip the draw — tap No draw, or draw as usual if you prefer. Jokers cannot be continued. Dropping your last cards this way locks in 0 points for the round; the others play on, and when only one player still holds cards, the round ends and they add their hand value.</li></ul>
-      <p>Aces are low. Jokers score 0 but are not wildcards. The host can toggle rules before creating a table.</p></section>
-    <section><h3>03 / Know when to show</h3><p>Everyone must complete one turn in each dealt round before anyone can show. After that, you may show any hand value at the start of your turn. A unique lowest showing player adds 0; everyone else adds their own hand value. A wrong show adds 50 to the showing player, the lowest hand or tied lowest hands add 0, and every other player adds their own hand value. Points are added to cumulative match scores, not used to reset them.</p></section>
+    <section><h3>02 / Make your move</h3><p>Select one card or multiple cards with the same number or face (such as two 7s or two Kings), or with Rummy on, a run of 3–4 cards in sequence from one suit. Tap a selected card again to deselect it. Tap the draw pile or any one face-up card in the latest dropped group; your choice is highlighted. All cards in a multi-card drop are shown in the center. Confirm with Play to take exactly one card, never a card you are dropping this turn. A new drop covers older groups. If you do not drop, the unclaimed cards in the latest group remain available; taking its last card does not uncover older cards. Covered cards are recycled when the draw pile runs out, while the whole visible group stays on the table. Play stays on the right and is enabled on your turn when connected and not submitting. Hands never exceed 5 cards: every turn you must drop at least one card, so Play stays disabled until you select one. If no visible discard remains, that choice is unavailable. Show hand stays on the left. Each player has 15 seconds per turn and 5 lives for the entire match. Every timeout costs one life. While lives remain, a timed-out turn is skipped with your hand unchanged (no drop, no draw); these turns count towards unlocking Show hand. On the fifth timeout, you are eliminated and stay as a spectator with chat access. Lives do not reset between rounds or after playing a turn. The last active player wins.</p>
+      <ul><li><strong>Single card:</strong> you can always drop any one card, on every table.</li><li><strong>Same number:</strong> drop a group of equal ranks, or one card matching the top discard.</li><li><strong>Rummy:</strong> drop a run of 3–4 cards in sequence from the same suit, such as 5♠ 6♠ 7♠, then draw one card as usual. Aces are low (A-2-3), runs do not wrap from King to Ace. One Joker can stand in for any single missing card, such as Joker 2♠ 3♠ or 5♠ Joker 7♠.</li><li><strong>Continuation:</strong> drop one or more cards matching the top discard’s rank and skip the draw — tap No draw, or draw as usual if you prefer. Jokers cannot be continued. Dropping your last cards this way locks in 0 points for the round; the others play on, and when only one player still holds cards, the round ends and they add their hand value.</li></ul>
+      <p>Aces are low. Jokers score 0 and are only wild inside a Rummy run (one per run). The host can toggle rules before creating a table.</p></section>
+    <section><h3>03 / Know when to show</h3><p>Everyone must complete one turn in each dealt round before anyone can show. After that, you may show at the start of your turn if your hand is within the table's show limit: 5 points, 10 points, or any value, chosen by the host when creating the table. The Show hand button appears only when your hand qualifies. A unique lowest showing player adds 0; everyone else adds their own hand value. A wrong show adds 50 to the showing player, the lowest hand or tied lowest hands add 0, and every other player adds their own hand value. Points are added to cumulative match scores, not used to reset them.</p></section>
     <section><h3>04 / The long game</h3><p>At the table’s selected points limit (any whole number from 50 to 1,001; default 201), you are eliminated and can watch. The last player standing wins. After each round, the next round is dealt automatically following a 10-second countdown; only the first round needs the host to start it. Matches cannot be finished early at current scores. The host can still abort without saving scores. Finished or aborted matches do not restart. If all draw and recyclable discard cards run out, lowest hands get 0 and the others get +50.</p></section>
     <div className="value-strip"><span>Joker <b>0</b></span><span>Ace <b>1</b></span><span>2–10 <b>Face value</b></span><span>J / Q / K <b>10 each</b></span></div>
     <p className="fine-print">Anyone can leave at any time. Leaving during a match forfeits your participation and prevents rejoining that match; the others continue with their existing cards and scores. The last active player wins. Host ownership transfers when the host leaves, and the table is removed when its last participant leaves. Disconnecting alone keeps your seat reserved for reconnecting. The host can also abort during or between rounds after confirmation, ending the game for everyone without saving scores or match history. Waiting tables expire 45 minutes after creation if the match has not started, even with players online. Joining and chat do not extend that deadline. Non-waiting tables expire after 30 minutes offline without room activity. Active tables are held in memory and reset if the backend restarts.</p>

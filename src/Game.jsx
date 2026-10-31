@@ -68,17 +68,12 @@ function Chat({ room, user, send, busy, connected, text, setText, compact = fals
 
 function Scoreboard({ room, user }) {
   const players = [...room.players].sort((a, b) => a.score - b.score);
-  return <section className="score-panel"><div className="chat-heading"><h3><Icon name="trophy" size={18} /> Scoreboard</h3><span>Out at {room.pointsToEliminate}</span></div>
-    {players.map((player, index) => <div className={`score-row ${player.eliminated ? 'eliminated' : ''}`} key={player.id}>
-      <span className="score-rank">{index + 1}</span><Avatar name={player.name} index={room.players.indexOf(player)} small />
-      <div className="score-player"><b>{player.name}{player.id === user.id ? ' (you)' : ''}</b><span>{player.eliminated ? 'Eliminated' : player.id === room.hostId ? 'Host' : player.connected ? 'At the table' : 'Reconnecting'} · {player.lives} lives</span></div><b className="score-value">{player.score}</b>
-    </div>)}
+  return <section className="score-panel"><div className="chat-heading"><h3><Icon name="trophy" size={18} /> Round points</h3><span>Out at {room.pointsToEliminate}</span></div>
     <div className="round-score-history">
-      <div className="round-score-heading"><b>Round points</b><span>Points added each round</span></div>
-      {room.results.length ? <div className="round-score-scroll">
+      <div className="round-score-scroll">
         <table>
           <thead><tr><th scope="col">Round</th>{players.map((player) =>
-            <th scope="col" key={player.id}>{player.name}{player.id === user.id ? ' (you)' : ''}</th>)}</tr></thead>
+            <th scope="col" key={player.id} title={player.name} className={`${player.eliminated ? 'round-score-out' : ''} ${player.id === user.id ? 'round-score-you' : ''}`}>{player.id === user.id ? 'You' : player.name}</th>)}</tr></thead>
           <tbody>{room.results.map((result) => <tr key={result.round}>
             <th scope="row">R{result.round}</th>
             {players.map((player) => {
@@ -91,7 +86,8 @@ function Scoreboard({ room, user }) {
           <tfoot><tr><th scope="row">Total</th>{players.map((player) =>
             <td className="round-score-total" key={player.id}>{player.score}</td>)}</tr></tfoot>
         </table>
-      </div> : <p className="round-score-empty">Round points will appear after the first completed round.</p>}
+      </div>
+      {!room.results.length && <p className="round-score-empty">Points will appear after the first completed round.</p>}
     </div>
   </section>;
 }
@@ -255,6 +251,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const isHost = room.hostId === user.id;
   const myTurn = room.turnId === user.id && room.status === 'playing';
   const canAct = myTurn && connected && !busy;
+  const canShowValue = room.showLimit == null || (me?.value ?? Infinity) <= room.showLimit;
   const seconds = Math.max(0, Math.ceil((room.turnDeadline - now) / 1000));
   // Announce the start of the player's turn: vibration, chime and tab title.
   const wasMyTurn = useRef(false);
@@ -308,9 +305,16 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       setSelected((previous) => previous.filter((id) => id !== card.id));
       return;
     }
-    const first = me.hand.find((entry) => entry.id === selected[0]);
-    if (first && first.rank !== card.rank) {
-      rejectAction(event.currentTarget, 'Select only cards with the same number or face. Deselect your cards to choose a different rank.');
+    const picked = [...selected.map((id) => me.hand.find((entry) => entry.id === id)), card];
+    const sameRank = picked.every((entry) => entry.rank === picked[0].rank);
+    // With Rummy on, cards of one suit can be collected into a run (checked again on Play).
+    const naturals = picked.filter((entry) => entry.rank > 0);
+    const runCandidate = room.rules.rummy && picked.length <= 4 && picked.length - naturals.length <= 1
+      && naturals.every((entry) => entry.suit === naturals[0].suit);
+    if (!sameRank && !runCandidate) {
+      rejectAction(event.currentTarget, room.rules.rummy
+        ? 'Select cards with the same number, or a Rummy run of 3–4 cards in sequence from one suit.'
+        : 'Select only cards with the same number or face. Deselect your cards to choose a different rank.');
       return;
     }
     setSelected((previous) => [...previous, card.id]);
@@ -433,11 +437,11 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
             {room.status === 'playing' && me && !me.eliminated && !me.hand.length && <p className="muted">You dropped your last card — 0 points locked in. The round plays on without you.</p>}
           </div>
           {room.status === 'playing' && !me?.eliminated && <div className="hand-actions"><span className="selection-note" role="status">{selected.length ? `${selected.length} selected · Tap again to put back` : 'Tap cards to select. Tap again to put back.'}</span>
-            <button className="button button-outline hand-show" disabled={!canAct} onClick={(event) => {
+            {canShowValue ? <button className="button button-outline hand-show" disabled={!canAct} onClick={(event) => {
               if (!room.showUnlocked) { rejectAction(event.currentTarget, 'Every active player must complete a turn before showing a hand.'); return; }
               if (selected.length) { rejectAction(event.currentTarget, 'Deselect your cards before showing your hand.'); return; }
               sendGameAction('game:show', { revision: room.revision }, event.currentTarget);
-            }}>Show hand</button>
+            }}>Show hand</button> : <span className="hand-show-locked">Show at {room.showLimit} pts or less</span>}
             <button className="button button-dark hand-play" disabled={!canAct || !selected.length}
               title={canAct && !selected.length ? 'Select at least one card to drop' : undefined} onClick={dropAndDraw}>
               {busy ? 'Playing…' : 'Play'}<Icon name="arrow" size={16} /></button>
@@ -446,7 +450,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
         </section>
         </div>
         {!mobile && (isRoundEnd || isFinished) && room.results.length > 0 && <Results result={room.results.at(-1)} />}
-        <div className="active-rules"><span>TABLE RULES</span>{Object.entries(room.rules).filter(([, enabled]) => enabled).map(([rule]) => <span className="rule-chip" key={rule}>{ruleLabels[rule]}</span>)}<button className="text-button" onClick={onRules}>Rulebook <Icon name="arrow" size={14} /></button></div>
+        <div className="active-rules"><span>TABLE RULES</span>{room.showLimit != null && <span className="rule-chip">Show ≤ {room.showLimit} pts</span>}{Object.entries(room.rules).filter(([rule, enabled]) => enabled && rule !== 'anyCard').map(([rule]) => <span className="rule-chip" key={rule}>{ruleLabels[rule]}</span>)}<button className="text-button" onClick={onRules}>Rulebook <Icon name="arrow" size={14} /></button></div>
       </div>
       {!mobile && <aside className="game-sidebar"><Scoreboard room={room} user={user} /><Chat room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} /></aside>}
     </div>
