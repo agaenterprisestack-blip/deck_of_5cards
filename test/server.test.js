@@ -776,3 +776,38 @@ test('HTTP and Socket.IO support account login, rooms, private hands, chat, reco
   assert.equal((await api('/logout', { method: 'POST', token: guest.data.token })).status, 200);
   assert.equal((await api('/me', { token: guest.data.token })).status, 401);
 });
+
+test('a reconnecting player whose table vanished sees no table and can always leave', async (t) => {
+  const store = await createStore();
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const sockets = [];
+  t.after(async () => {
+    sockets.forEach((socket) => socket.disconnect());
+    await server.close();
+  });
+  const user = await store.createPlayer('Phone Player');
+  const token = await store.session(user);
+  const connect = async () => {
+    const socket = io(url, { auth: { token }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { socket, room: undefined, emit: (event, data) => socket.timeout(4000).emitWithAck(event, data) };
+    socket.on('room', (room) => { client.room = room; });
+    sockets.push(socket);
+    await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); socket.connect(); });
+    return client;
+  };
+  const first = await connect();
+  await until(() => first.room === null, 'A player with no table should be told so on connect');
+  assert.equal((await first.emit('room:create', { name: 'Vanishing table', capacity: 2,
+    rules: { sameNumber: true, rummy: false, continuation: false } })).ok, true);
+  await until(() => first.room?.name === 'Vanishing table');
+  // The app goes to the background, and the table disappears meanwhile (e.g. a server restart).
+  first.socket.disconnect();
+  server.rooms.clear();
+  const again = await connect();
+  await until(() => again.room === null, 'A vanished table must be cleared on reconnect');
+  const left = await again.emit('room:leave', {});
+  assert.equal(left.ok, true, left.error);
+  assert.equal(again.room, null);
+});

@@ -172,6 +172,11 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     if (existing) {
       socket.data.code = existing.code;
       broadcastRoom(existing);
+    } else {
+      // Always tell a (re)connecting client its table, so a table removed while it was
+      // away (server restart, expiry) is not left on screen.
+      socket.data.code = null;
+      socket.emit('room', null);
     }
     let windowStart = Date.now();
     let actions = 0;
@@ -197,9 +202,21 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
       }
     });
     const currentRoom = () => {
-      const room = rooms.get(socket.data.code);
-      if (!room || !room.players.some((p) => p.id === user.id && !p.left)) throw new GameError('Join a table first.');
+      let room = rooms.get(socket.data.code);
+      if (!room || !room.players.some((p) => p.id === user.id && !p.left)) {
+        room = findRoom(user.id);
+        if (!room) throw new GameError('Join a table first.');
+        socket.data.code = room.code;
+      }
       return room;
+    };
+    const backToLobby = () => {
+      for (const peer of io.sockets.sockets.values()) {
+        if (peer.data.user.id === user.id) {
+          peer.data.code = null;
+          peer.emit('room', null);
+        }
+      }
     };
     const requireRevision = (revision) => {
       const room = currentRoom();
@@ -232,18 +249,19 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
       broadcastRoom(rooms.get(code));
     });
     handle('room:leave', z.object({}), async () => {
-      const room = currentRoom();
+      // Leaving always succeeds: a player who is no longer seated simply returns to the lobby.
+      const room = findRoom(user.id);
+      if (!room) {
+        backToLobby();
+        broadcastLobby();
+        return;
+      }
       if (locks.has(room.code)) throw new GameError('The table is updating. Please try again.');
       if (room.players.filter((player) => !player.left).length === 1) rooms.delete(room.code);
       else await changeRoom(room, (next) => leaveRoom(next, user.id), {
         resetTurn: room.status === 'playing' && room.turnId === user.id,
       });
-      for (const peer of io.sockets.sockets.values()) {
-        if (peer.data.user.id === user.id) {
-          peer.data.code = null;
-          peer.emit('room', null);
-        }
-      }
+      backToLobby();
       broadcastLobby();
     });
     handle('game:abort', revisionSchema, async ({ revision }) => {
@@ -251,7 +269,7 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     });
     handle('game:start', revisionSchema, async ({ revision }) => {
       const room = requireRevision(revision);
-      if (room.status === 'roundEnd') throw new GameError('The next round starts automatically after the 15-second break.');
+      if (room.status === 'roundEnd') throw new GameError('The next round starts automatically after the 10-second break.');
       await changeRoom(room, (next) => startRound(next, user.id));
     });
     handle('game:play', playSchema, async ({ revision, cardIds, drawSource, discardCardId }) => {
@@ -296,6 +314,11 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
       }
       if (room.status !== 'waiting' && !anyoneOnline && Date.now() - room.updatedAt > 30 * 60_000 && !locks.has(room.code)) {
         rooms.delete(room.code);
+        for (const socket of io.sockets.sockets.values()) {
+          if (socket.data.code !== room.code) continue;
+          socket.data.code = null;
+          socket.emit('room', null);
+        }
         broadcastLobby();
         continue;
       }
