@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Card, FullscreenButton, Icon, Modal, rankLabel, ruleLabels } from './components.jsx';
+import { Avatar, Card, Icon, Modal, rankLabel, ruleLabels } from './components.jsx';
 
 const compactTableQuery = '(max-width: 1100px)';
 const clockwiseSeatLayouts = {
@@ -210,6 +210,18 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const [mobile, setMobile] = useState(() => window.matchMedia(compactTableQuery).matches);
   const [controlsOpen, setControlsOpen] = useState(false);
   const swipeStart = useRef(null);
+  // Phone layout: share the hand panel's height with CSS so the piles fill the space above it.
+  const feltRef = useRef(null);
+  useEffect(() => {
+    const felt = feltRef.current;
+    const hand = felt?.querySelector('.hand-panel');
+    if (!felt || !hand || typeof ResizeObserver === 'undefined') return;
+    const update = () => felt.style.setProperty('--hand-h', `${hand.offsetHeight + 3}px`);
+    const observer = new ResizeObserver(update);
+    observer.observe(hand);
+    update();
+    return () => observer.disconnect();
+  }, [room.status]);
   const [drawSource, setDrawSource] = useState('drawPile');
   const [discardCardId, setDiscardCardId] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -327,6 +339,12 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       notify(`Clipboard unavailable. Share this code: ${room.code}`);
     }
   }
+  // Phone tools: shown between Show hand and Play, or in a bottom bar when there is no hand row.
+  const tableTools = <>
+    <button type="button" aria-label="Open chat" aria-haspopup="dialog" onClick={() => setPanel('chat')}><Icon name="chat" size={18} /><span>Chat</span></button>
+    <button type="button" aria-label="Open scoreboard" aria-haspopup="dialog" onClick={() => setPanel('scores')}><Icon name="trophy" size={18} /><span>Scores</span></button>
+    {(isRoundEnd || isFinished) && room.results.length > 0 && <button type="button" aria-label="Open round results" aria-haspopup="dialog" onClick={() => setPanel('results')}><Icon name="cards" size={18} /><span>Results</span></button>}
+  </>;
   const lastResult = room.results.at(-1);
   const currentResult = lastResult?.round === room.round ? lastResult : null;
   const roundWinners = currentResult?.scores.filter((entry) => entry.penalty === 0) || [];
@@ -370,7 +388,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
     {!connected && <div className="inline-warning" role="status">Connection interrupted. Reconnecting automatically; your seat is reserved.</div>}
     <div className="game-layout">
       <div className="game-main">
-        <div className="felt-table">
+        <div className="felt-table" ref={feltRef}>
           <div className="table-reactions">{tableReactions.map((message) => {
             const origin = message.userId === user.id ? [50, 86]
               : seatPositions[opponents.findIndex((player) => player.id === message.userId)];
@@ -442,10 +460,13 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               if (selected.length) { rejectAction(event.currentTarget, 'Deselect your cards before showing your hand.'); return; }
               sendGameAction('game:show', { revision: room.revision }, event.currentTarget);
             }}>Show hand</button> : <span className="hand-show-locked">Show at {room.showLimit} pts or less</span>}
+            {mobile && <div className="hand-tools" role="group" aria-label="Table tools">{tableTools}</div>}
             <button className="button button-dark hand-play" disabled={!canAct || !selected.length}
               title={canAct && !selected.length ? 'Select at least one card to drop' : undefined} onClick={dropAndDraw}>
               {busy ? 'Playing…' : 'Play'}<Icon name="arrow" size={16} /></button>
           </div>}
+          {mobile && !(room.status === 'playing' && !me?.eliminated) && !(isRoundEnd || isFinished || isAborted)
+            && <div className="hand-actions"><div className="hand-tools" role="group" aria-label="Table tools">{tableTools}</div></div>}
           {room.lastAction && <p className="last-action" role="status"><span />{room.lastAction}</p>}
         </section>
         </div>
@@ -454,13 +475,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       </div>
       {!mobile && <aside className="game-sidebar"><Scoreboard room={room} user={user} /><Chat room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} /></aside>}
     </div>
-    {mobile && <nav className="game-dock" aria-label="Table tools">
-      <FullscreenButton notify={notify} compact />
-      <button aria-label="Open chat" aria-haspopup="dialog" onClick={() => setPanel('chat')}><Icon name="chat" /><span>Chat</span></button>
-      <button aria-label="Open scoreboard" aria-haspopup="dialog" onClick={() => setPanel('scores')}><Icon name="trophy" /><span>Scores</span></button>
-      {(isRoundEnd || isFinished) && room.results.length > 0 && <button aria-label="Open round results" aria-haspopup="dialog" onClick={() => setPanel('results')}><Icon name="cards" /><span>Results</span></button>}
-      <button aria-label="Open rulebook" aria-haspopup="dialog" onClick={onRules}><Icon name="book" /><span>Rules</span></button>
-    </nav>}
+    {mobile && (isRoundEnd || isFinished || isAborted) && <nav className="game-dock game-dock-row" aria-label="Table tools">{tableTools}</nav>}
     {mobile && panel && <Modal className={`game-tool-modal ${panel === 'chat' ? 'game-chat-modal' : ''}`} title={panel === 'chat' ? 'Table chat' : panel === 'scores' ? 'Scores' : 'Round results'}
       notification={notification} onClose={() => setPanel(null)}>
       {panel === 'chat' ? <Chat compact room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} />
