@@ -127,7 +127,7 @@ function matchStandings(room) {
     || a.name.localeCompare(b.name));
 }
 
-function MatchScorecard({ room, user, busy, notify, onClose, onLeave }) {
+function MatchScorecard({ room, user, busy, notify, onClose, onLeave, onNextGame }) {
   const standings = matchStandings(room);
   const winners = standings.filter((player) => player.winner);
   const rounds = room.results.length;
@@ -175,7 +175,8 @@ function MatchScorecard({ room, user, busy, notify, onClose, onLeave }) {
         </li>)}
       </ol>
       <footer className="scorecard-actions">
-        <button className="button button-accent" disabled={busy} onClick={onLeave}>Back to the lobby <Icon name="arrow" size={17} /></button>
+        <button className="button button-accent" disabled={busy} onClick={onNextGame}><Icon name="cards" size={17} /> Play again</button>
+        <button className="button button-outline" disabled={busy} onClick={onLeave}>Back to the lobby <Icon name="arrow" size={17} /></button>
         <button className="button button-outline" onClick={copyResult}><Icon name="copy" size={16} /> Copy result</button>
         <button className="text-button" onClick={onClose}>View table</button>
       </footer>
@@ -345,6 +346,8 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
     <button type="button" aria-label="Open scoreboard" aria-haspopup="dialog" onClick={() => setPanel('scores')}><Icon name="trophy" size={18} /><span>Scores</span></button>
     {(isRoundEnd || isFinished) && room.results.length > 0 && <button type="button" aria-label="Open round results" aria-haspopup="dialog" onClick={() => setPanel('results')}><Icon name="cards" size={18} /><span>Results</span></button>}
   </>;
+  // Same table, same players and rules, fresh scores. Everyone returns to the waiting room.
+  const nextGame = (event) => sendGameAction('game:next', { revision: room.revision }, event?.currentTarget);
   const lastResult = room.results.at(-1);
   const currentResult = lastResult?.round === room.round ? lastResult : null;
   const roundWinners = currentResult?.scores.filter((entry) => entry.penalty === 0) || [];
@@ -414,13 +417,19 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               <span className="table-player-count">{room.players.length} / {room.capacity} players at the table</span>
             </div> : isAborted ? <div className="finished-center"><span className="eyebrow">MATCH CANCELLED</span>
               <h2>This game was aborted.</h2><p>{room.lastAction}</p>
-              <button className="button button-accent" disabled={busy || !connected} onClick={() => send('room:leave', {})}>Back to the lobby <Icon name="arrow" size={17} /></button>
+              <div className="next-game-actions">
+                <button className="button button-accent" disabled={busy || !connected} onClick={nextGame}><Icon name="cards" size={17} /> Play again</button>
+                <button className="button button-outline" disabled={busy || !connected} onClick={() => send('room:leave', {})}>Back to the lobby <Icon name="arrow" size={17} /></button>
+              </div>
             </div> : isFinished ? <div className="finished-center">
               <WrongShowNotice result={currentResult} />
               <WinnerCelebration key={`match-${room.round}`} winners={room.winnerHands || []} round={room.round} match />
               {!room.winnerIds.length && <h2>Match complete. No players remain.</h2>}
-              <button className="button button-outline" onClick={() => setScorecardOpen(true)}><Icon name="trophy" size={16} /> Scorecard</button>
-              <button className="button button-accent" disabled={busy} onClick={() => send('room:leave', {})}>Back to the lobby <Icon name="arrow" size={17} /></button>
+              <div className="next-game-actions">
+                <button className="button button-accent" disabled={busy || !connected} onClick={nextGame}><Icon name="cards" size={17} /> Play again</button>
+                <button className="button button-outline" onClick={() => setScorecardOpen(true)}><Icon name="trophy" size={16} /> Scorecard</button>
+                <button className="button button-outline" disabled={busy} onClick={() => send('room:leave', {})}>Lobby <Icon name="arrow" size={17} /></button>
+              </div>
             </div> : isRoundEnd ? <div className="waiting-center">
               <WrongShowNotice result={currentResult} />
               <WinnerCelebration key={`round-${room.round}`} winners={roundWinners} round={room.round} />
@@ -482,6 +491,6 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
         : panel === 'scores' ? <Scoreboard room={room} user={user} /> : <Results result={room.results.at(-1)} />}
     </Modal>}
     {isFinished && scorecardOpen && <MatchScorecard room={room} user={user} busy={busy} notify={notify}
-      onClose={() => setScorecardOpen(false)} onLeave={() => send('room:leave', {})} />}
+      onClose={() => setScorecardOpen(false)} onLeave={() => send('room:leave', {})} onNextGame={nextGame} />}
   </div>;
 }

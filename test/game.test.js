@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_RULES, GameError, createDeck, deckCount, createRoom, joinRoom, leaveRoom, startRound,
-  legalPlay, playTurn, expireTurn, showHand, finishMatch, abortMatch, handValue, roomView,
+  legalPlay, playTurn, expireTurn, showHand, finishMatch, abortMatch, startNextGame, handValue, roomView,
 } from '../server/game.js';
 
 const card = (rank, suit = 'hearts', id = `${suit}-${rank}`) => ({ rank, suit, id });
@@ -881,4 +881,42 @@ test('show limit blocks shows above the limit, allows at or below it, and defaul
   assert.equal(showHand(open, 'p0').successful, true);
   const invalid = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { showLimit: 7 });
   assert.equal(invalid.showLimit, null);
+});
+test('play again resets a finished or aborted table for the seated players only', () => {
+  const room = fixture(3);
+  const { code, name, rules, matchId } = room;
+  assert.throws(() => startNextGame(room, 'p0'), /still in progress/);
+  room.players[0].score = 120;
+  room.players[1].lives = 2;
+  room.players[2].score = 260;
+  room.players[2].eliminated = true;
+  room.status = 'finished';
+  room.winnerIds = ['p0'];
+  room.results = [{ round: 1, scores: [] }];
+  room.round = 4;
+  leaveRoom(room, 'p0');
+  assert.equal(room.hostId, 'p1');
+  assert.throws(() => startNextGame(room, 'p0'), /Join this table/);
+  startNextGame(room, 'p2');
+  assert.equal(room.status, 'waiting');
+  assert.equal(room.code, code);
+  assert.equal(room.name, name);
+  assert.deepEqual(room.rules, rules);
+  assert.notEqual(room.matchId, matchId);
+  assert.deepEqual(room.players.map((player) => player.id), ['p1', 'p2']);
+  assert.ok(room.players.every((player) => player.score === 0 && player.lives === 5 && !player.eliminated && !player.hand.length));
+  assert.equal(room.hostId, 'p1');
+  assert.deepEqual([room.round, room.results.length, room.winnerIds.length], [0, 0, 0]);
+  assert.throws(() => startRound(room, 'p1'), /Every seat must be filled/);
+  joinRoom(room, { id: 'p3', name: 'Player 3' });
+  startRound(room, 'p1');
+  assert.equal(room.status, 'playing');
+  assert.equal(room.round, 1);
+
+  const aborted = fixture(2);
+  aborted.status = 'aborted';
+  startNextGame(aborted, 'p1');
+  assert.equal(aborted.status, 'waiting');
+  startRound(aborted, 'p0');
+  assert.equal(aborted.status, 'playing');
 });

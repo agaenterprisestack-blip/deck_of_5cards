@@ -366,6 +366,24 @@ export function abortMatch(room, userId) {
   room.lastAction = 'The host aborted the game. No scores or match history were saved.';
 }
 
+// After a match ends (or is aborted), any seated player can set up the next game at the
+// same table: same code, name and house rules; scores, lives and rounds start fresh.
+// Players who went back to the lobby are not carried over, so their seats open again.
+export function startNextGame(room, userId) {
+  if (!['finished', 'aborted'].includes(room.status)) throw new GameError('The current game is still in progress.');
+  const player = room.players.find((entry) => entry.id === userId && !entry.left);
+  if (!player) throw new GameError('Join this table first.');
+  room.players = room.players.filter((entry) => !entry.left)
+    .map(({ id, name }) => ({ id, name, score: 0, hand: [], eliminated: false, lives: 5 }));
+  if (!room.players.some((entry) => entry.id === room.hostId)) room.hostId = player.id;
+  Object.assign(room, {
+    status: 'waiting', round: 0, turnId: null, turnDeadline: null, nextRoundDeadline: null,
+    completedTurnIds: [], drawPile: [], discardPile: [], lastPlay: [], results: [],
+    winnerId: null, winnerIds: [], matchId: randomUUID(), createdAt: Date.now(),
+  });
+  room.lastAction = `${player.name} set up the next game. Deal when every seat is filled.`;
+}
+
 export function finishMatch(room, userId) {
   if (room.hostId !== userId) throw new GameError('Only the host can finish a match.');
   if (room.status !== 'roundEnd') throw new GameError('Finish the current round first.');

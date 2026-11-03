@@ -11,7 +11,7 @@ import { Server } from 'socket.io';
 import { z } from 'zod';
 import { AccountError } from './store.js';
 import {
-  GameError, createRoom, joinRoom, leaveRoom, startRound, playTurn, expireTurn, showHand, abortMatch, roomView,
+  GameError, createRoom, joinRoom, leaveRoom, startRound, playTurn, expireTurn, showHand, abortMatch, startNextGame, roomView,
 } from './game.js';
 
 const usernameSchema = z.string().trim().normalize('NFKC').min(1, 'Enter your username.')
@@ -266,6 +266,9 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     });
     handle('game:abort', revisionSchema, async ({ revision }) => {
       await changeRoom(requireRevision(revision), (room) => abortMatch(room, user.id));
+    });
+    handle('game:next', revisionSchema, async ({ revision }) => {
+      await changeRoom(requireRevision(revision), (room) => startNextGame(room, user.id), { resetTurn: false });
     });
     handle('game:start', revisionSchema, async ({ revision }) => {
       const room = requireRevision(revision);

@@ -1236,3 +1236,8 @@ body { background: #f8f7f7; }
 @media (max-width: 1100px) {
   .table-experience .hand-actions > .hand-tools:only-child { margin: 0 auto; }
 }
+
+/* Play again / Scorecard / Lobby buttons after a match */
+.next-game-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.next-game-actions .button { margin: 0; }
+.table-experience .next-game-actions .button-outline { color: #fff4dc; border-color: #b8d3b8; background: #103e2c; }
