@@ -332,6 +332,24 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
     }
     setSelected((previous) => [...previous, card.id]);
   }
+  const inviteLink = `${window.location.origin}/?join=${room.code}`;
+  async function shareInvite() {
+    // Phones get the system share sheet (WhatsApp, SMS…); desktops copy the link.
+    if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+      try {
+        await navigator.share({ title: '5 Cards', text: `Join my 5 Cards table "${room.name}"`, url: inviteLink });
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      notify('Invite link copied. Send it to your friends.', 'success');
+    } catch {
+      notify(`Share this invite link: ${inviteLink}`);
+    }
+  }
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(room.code);
@@ -375,6 +393,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
     {mobile && !controlsOpen && <button className="table-controls-handle" aria-label="Show table code and Leave controls" aria-expanded={false} aria-controls="table-heading" onClick={() => setControlsOpen(true)}><span /></button>}
     <div id="table-heading" className="game-heading" hidden={mobile && !controlsOpen}><div><span className="eyebrow">{isWaiting ? 'YOUR NEXT GREAT CARD NIGHT' : `ROUND ${room.round} · ${room.deckCount} DECK${room.deckCount === 1 ? '' : 'S'}`}</span><h1>{room.name}</h1></div>
       <div className="game-heading-actions"><button className="code-badge" onClick={copyCode} title="Copy table code">{room.code}<Icon name="copy" size={15} /></button>
+        <button type="button" className="icon-button invite-icon" aria-label="Share invite link" title="Share invite link" onClick={shareInvite}><Icon name="share" size={18} /></button>
         <button className="icon-button" aria-label="Game rules" onClick={onRules}><Icon name="book" /></button>
         {isHost && (room.status === 'playing' || isRoundEnd) && <button className="button button-danger button-small" disabled={busy || !connected}
           onClick={(event) => {
@@ -412,8 +431,11 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           </div>
           <div className="table-center">
             {isWaiting ? <div className="waiting-center"><span className="table-watermark">5<span>♠</span></span><h2>Good things come in fives.</h2><p>{room.players.length < room.capacity ? `Waiting for ${room.capacity - room.players.length} more player${room.capacity - room.players.length === 1 ? '' : 's'} to fill the table.` : 'All seats are filled. Any seated player can deal the cards.'}</p>
-              <button className="button button-accent" disabled={room.players.length < room.capacity || busy || !connected}
-                onClick={(event) => sendGameAction('game:start', { revision: room.revision }, event.currentTarget)}><Icon name="cards" size={18} /> Deal the cards</button>
+              <div className="waiting-actions">
+                <button className="button button-accent" disabled={room.players.length < room.capacity || busy || !connected}
+                  onClick={(event) => sendGameAction('game:start', { revision: room.revision }, event.currentTarget)}><Icon name="cards" size={18} /> Deal the cards</button>
+                {room.players.length < room.capacity && <button type="button" className="button button-outline invite-button" onClick={shareInvite}><Icon name="share" size={17} /> Invite players</button>}
+              </div>
               <span className="table-player-count">{room.players.length} / {room.capacity} players at the table</span>
             </div> : isAborted ? <div className="finished-center"><span className="eyebrow">MATCH CANCELLED</span>
               <h2>This game was aborted.</h2><p>{room.lastAction}</p>

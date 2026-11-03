@@ -17,6 +17,7 @@ const iconPaths = {
   mute: <><path d="m11 4-6 5H2v6h3l6 5zM16 9l6 6M16 15l6-6" /></>,
   fullscreen: <path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" />,
   minimize: <path d="M3 8h5V3M21 8h-5V3M8 21v-5H3M16 21v-5h5" />,
+  share: <><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" /></>,
 };
 
 export function Icon({ name, size = 20, ...props }) {
