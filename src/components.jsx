@@ -165,6 +165,37 @@ export const ruleLabels = {
   anyCard: 'Any card', sameNumber: 'Same number', rummy: 'Rummy', continuation: 'Continuation',
 };
 
+// Table settings, used both to create a table and to edit it before the first deal.
+export function TableForm({ initial, busy, onSubmit, minSeats = 2, editing = false }) {
+  const [rules, setRules] = useState(() => {
+    const { sameNumber = true, rummy = false, continuation = false } = initial?.rules || {};
+    return { sameNumber, rummy, continuation };
+  });
+  const [capacity, setCapacity] = useState(initial?.capacity ?? 5);
+  const [showLimit, setShowLimit] = useState(initial?.showLimit ?? null);
+  return <form className="form-stack" onSubmit={(event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    onSubmit({ name: data.get('name'), capacity, pointsToEliminate: Number(data.get('pointsToEliminate')), showLimit, rules });
+  }}>
+    <label>Table name<input name="name" placeholder="The usual suspects" minLength={2} maxLength={36} required autoFocus defaultValue={initial?.name} /></label>
+    <label>Seats at the table<span className="capacity-picker">{Array.from({ length: 9 }, (_, i) => i + 2).map((count) =>
+      <button key={count} type="button" aria-pressed={capacity === count} disabled={count < minSeats}
+        title={count < minSeats ? `${minSeats} players are already seated` : undefined}
+        className={capacity === count ? 'active' : ''} onClick={() => setCapacity(count)}>{count}</button>)}</span></label>
+    <label>Points to eliminate<input name="pointsToEliminate" type="number" min={50} max={1001} step={1} defaultValue={initial?.pointsToEliminate ?? 201} required aria-describedby="points-help" /></label>
+    <p id="points-help" className="fine-print">Enter a whole number from 50 to 1,001. Players are eliminated when their score reaches this limit.</p>
+    <label>Show hand limit<span className="capacity-picker">{[[5, '5 pts'], [10, '10 pts'], [null, 'Any']].map(([limit, label]) =>
+      <button key={label} type="button" aria-pressed={showLimit === limit} className={showLimit === limit ? 'active' : ''} onClick={() => setShowLimit(limit)}>{label}</button>)}</span></label>
+    <p className="fine-print">{showLimit ? `Players can Show hand only when their hand is ${showLimit} points or less.` : 'Players can Show hand at any hand value. It is up to them when to show.'}</p>
+    <fieldset className="rule-options"><legend>Your house rules</legend>{Object.entries(rules).map(([rule, enabled]) => <label key={rule}>
+      <span>{ruleLabels[rule]}</span><input type="checkbox" checked={enabled} onChange={(event) => setRules((previous) => ({ ...previous, [rule]: event.target.checked }))} />
+    </label>)}</fieldset>
+    <p className="fine-print">{editing ? 'Changes apply to everyone at the table. Settings lock once the cards are dealt.' : 'At least 2 players to begin. The deck count adjusts automatically. Share the code after creating your table.'}</p>
+    <button className="button button-dark button-full" disabled={busy}>{busy ? (editing ? 'Saving…' : 'Setting the table…') : (editing ? 'Save changes' : 'Create my table')}<Icon name="arrow" size={17} /></button>
+  </form>;
+}
+
 export function RulesContent() {
   return <div className="rules-content">
     <div className="rule-intro"><span className="rule-number">5</span><p>Five cards in your hand.<br /><strong>One goal: keep it low.</strong></p></div>

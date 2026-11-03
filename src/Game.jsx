@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Card, Icon, Modal, rankLabel, ruleLabels } from './components.jsx';
+import { Avatar, Card, Icon, Modal, TableForm, rankLabel, ruleLabels } from './components.jsx';
 
 const compactTableQuery = '(max-width: 1100px)';
 const clockwiseSeatLayouts = {
@@ -18,6 +18,7 @@ const reactions = [
   ['😂', 'Laugh'], ['😅', 'Oops'], ['👏', 'Applause'],
   ['🎉', 'Celebrate'], ['👍', 'Thumbs up'], ['🤔', 'Thinking'],
   ['❤️', 'Heart'], ['😡', 'Angry'],
+  ['😉', 'Wink'], ['😝', 'Squinting face with tongue'], ['😜', 'Winking face with tongue'],
 ];
 
 function TableReaction({ message, origin }) {
@@ -228,8 +229,19 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const [now, setNow] = useState(Date.now());
   const [actionFeedback, setActionFeedback] = useState(null);
   const [scorecardOpen, setScorecardOpen] = useState(true);
+  const [editingTable, setEditingTable] = useState(false);
+  useEffect(() => { if (room.status !== 'waiting') setEditingTable(false); }, [room.status]);
+  // Phone chat: messages from others newer than this time count as unread.
+  const [chatSeenAt, setChatSeenAt] = useState(() => room.chat.at(-1)?.at ?? 0);
   useEffect(() => { if (room.status === 'finished') setScorecardOpen(true); }, [room.status]);
   const feedbackSequence = useRef(0);
+  const latestChatAt = room.chat.at(-1)?.at ?? 0;
+  // Phone chat drawer: hidden until the player swipes in from the right edge or taps its tab.
+  const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+  const chatSwipe = useRef(null);
+  useEffect(() => { if (panel === 'chat' || chatDrawerOpen) setChatSeenAt(latestChatAt); }, [panel, chatDrawerOpen, latestChatAt]);
+  useEffect(() => { if (!mobile) setChatDrawerOpen(false); }, [mobile]);
+  useEffect(() => { setChatSeenAt(room.chat.at(-1)?.at ?? 0); }, [room.code]);
   function rejectAction(element, message) {
     setActionFeedback({ id: ++feedbackSequence.current, message });
     if (!element?.isConnected) return;
@@ -342,7 +354,6 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   }
   // Phone tools: shown between Show hand and Play, or in a bottom bar when there is no hand row.
   const tableTools = <>
-    <button type="button" aria-label="Open chat" aria-haspopup="dialog" onClick={() => setPanel('chat')}><Icon name="chat" size={18} /><span>Chat</span></button>
     <button type="button" aria-label="Open scoreboard" aria-haspopup="dialog" onClick={() => setPanel('scores')}><Icon name="trophy" size={18} /><span>Scores</span></button>
     {(isRoundEnd || isFinished) && room.results.length > 0 && <button type="button" aria-label="Open round results" aria-haspopup="dialog" onClick={() => setPanel('results')}><Icon name="cards" size={18} /><span>Results</span></button>}
   </>;
@@ -352,15 +363,36 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const currentResult = lastResult?.round === room.round ? lastResult : null;
   const roundWinners = currentResult?.scores.filter((entry) => entry.penalty === 0) || [];
   const tableReactions = room.chat.filter((message) => reactions.some(([emoji]) => emoji === message.text)).slice(-30);
+  const textMessages = room.chat.filter((message) => !reactions.some(([emoji]) => emoji === message.text));
+  const recentMessages = textMessages.slice(-5);
+  const unreadChat = textMessages.filter((message) => message.at > chatSeenAt && message.userId !== user.id).length;
   return <div className={`game-page table-experience ${controlsOpen ? 'table-controls-open' : ''} ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''} ${myTurn ? 'my-turn' : ''} ${myTurn && seconds <= 5 ? 'my-turn-urgent' : ''}`}
+    onPointerDownCapture={(event) => {
+      // Tapping anywhere on the game area closes the chat drawer.
+      if (chatDrawerOpen && !event.target.closest('.mobile-chat, .chat-handle, [role="dialog"]')) setChatDrawerOpen(false);
+    }}
     onTouchStart={(event) => {
       swipeStart.current = null;
+      const edgeTouch = event.touches[0];
+      chatSwipe.current = mobile && !panel && event.touches.length === 1
+        && (chatDrawerOpen || edgeTouch.clientX >= window.innerWidth - 40) ? { x: edgeTouch.clientX, y: edgeTouch.clientY } : null;
       if (!mobile || panel || event.touches.length !== 1
         || event.target.closest('button, input, textarea, a, .playing-card, [role="dialog"]')) return;
       const touch = event.touches[0];
       swipeStart.current = { x: touch.clientX, y: touch.clientY };
     }}
     onTouchEnd={(event) => {
+      const edge = chatSwipe.current;
+      chatSwipe.current = null;
+      if (edge && event.changedTouches.length === 1) {
+        const moveX = event.changedTouches[0].clientX - edge.x;
+        const moveY = event.changedTouches[0].clientY - edge.y;
+        if (Math.abs(moveX) > 40 && Math.abs(moveX) > Math.abs(moveY) * 1.5) {
+          setChatDrawerOpen(moveX < 0);
+          swipeStart.current = null;
+          return;
+        }
+      }
       const start = swipeStart.current;
       swipeStart.current = null;
       if (!start || event.touches.length || event.changedTouches.length !== 1) return;
@@ -369,7 +401,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       if (Math.abs(distance) < 45 || Math.abs(distance) <= Math.abs(touch.clientX - start.x) * 1.5) return;
       setControlsOpen(distance > 0);
     }}
-    onTouchCancel={() => { swipeStart.current = null; }}>
+    onTouchCancel={() => { swipeStart.current = null; chatSwipe.current = null; }}>
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{actionFeedback && <span key={actionFeedback.id}>{actionFeedback.message}</span>}</div>
     <div className="rotate-hint"><Icon name="cards" size={32} /><h2>Turn your phone sideways</h2><p>This table is designed for landscape play. Rotate your phone to see your cards and all table controls together.</p></div>
     {mobile && !controlsOpen && <button className="table-controls-handle" aria-label="Show table code and Leave controls" aria-expanded={false} aria-controls="table-heading" onClick={() => setControlsOpen(true)}><span /></button>}
@@ -382,6 +414,8 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
               sendGameAction('game:abort', { revision: room.revision }, event.currentTarget);
             }
           }}><Icon name="close" size={16} /> Abort game</button>}
+        {isWaiting && isHost && <button type="button" className="button button-outline button-small table-edit" disabled={busy || !connected}
+          onClick={() => setEditingTable(true)}>Edit table</button>}
         <button className="button button-outline button-small table-leave" disabled={busy || !connected} onClick={() => {
           if ((isWaiting || isFinished || isAborted) || window.confirm('Leave this match? You cannot rejoin it, and your opponents will continue playing.')) send('room:leave', {});
         }}><Icon name="exit" size={16} /> Leave</button>
@@ -485,10 +519,30 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
       {!mobile && <aside className="game-sidebar"><Scoreboard room={room} user={user} /><Chat room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} /></aside>}
     </div>
     {mobile && (isRoundEnd || isFinished || isAborted) && <nav className="game-dock game-dock-row" aria-label="Table tools">{tableTools}</nav>}
+    {mobile && !chatDrawerOpen && <button type="button" className="chat-handle" onClick={() => setChatDrawerOpen(true)}
+      aria-label={`Show chat${unreadChat ? `, ${unreadChat} unread` : ''}`} aria-expanded={false}>
+      <Icon name="chat" size={17} />{unreadChat > 0 && <b className="chat-badge">{unreadChat > 9 ? '9+' : unreadChat}</b>}
+    </button>}
+    {mobile && <aside className={`mobile-chat ${chatDrawerOpen ? 'is-open' : ''}`} aria-label="Table chat" aria-hidden={!chatDrawerOpen} inert={!chatDrawerOpen}>
+      <button type="button" className="mobile-chat-open" aria-haspopup="dialog" onClick={() => setPanel('chat')}
+        aria-label={`Open chat${unreadChat ? `, ${unreadChat} unread` : ''}`}>
+        <span className="mobile-chat-icon"><Icon name="chat" size={18} />{unreadChat > 0 && <b className="chat-badge">{unreadChat > 9 ? '9+' : unreadChat}</b>}</span>
+        <span>Chat</span>
+      </button>
+      <ol className="mobile-chat-feed" aria-live="polite" onClick={() => setPanel('chat')}>
+        {recentMessages.map((message) => <li key={message.id} className={message.userId === user.id ? 'own-message' : ''}>
+          <b>{message.userId === user.id ? 'You' : message.name}</b><span>{message.text}</span></li>)}
+        {!recentMessages.length && <li className="mobile-chat-empty">No messages yet. Tap to say hi.</li>}
+      </ol>
+    </aside>}
     {mobile && panel && <Modal className={`game-tool-modal ${panel === 'chat' ? 'game-chat-modal' : ''}`} title={panel === 'chat' ? 'Table chat' : panel === 'scores' ? 'Scores' : 'Round results'}
       notification={notification} onClose={() => setPanel(null)}>
       {panel === 'chat' ? <Chat compact room={room} user={user} send={send} busy={busy} connected={connected} text={chatText} setText={setChatText} />
         : panel === 'scores' ? <Scoreboard room={room} user={user} /> : <Results result={room.results.at(-1)} />}
+    </Modal>}
+    {editingTable && isWaiting && <Modal title="Edit table" subtitle="Change the settings before the cards are dealt." notification={notification} onClose={() => setEditingTable(false)}>
+      <TableForm editing initial={room} minSeats={room.players.length} busy={busy}
+        onSubmit={async (settings) => { if (await send('room:update', { revision: room.revision, ...settings })) { setEditingTable(false); notify('Table settings saved.', 'success'); } }} />
     </Modal>}
     {isFinished && scorecardOpen && <MatchScorecard room={room} user={user} busy={busy} notify={notify}
       onClose={() => setScorecardOpen(false)} onLeave={() => send('room:leave', {})} onNextGame={nextGame} />}

@@ -1249,3 +1249,54 @@ body { background: #f8f7f7; }
 .password-toggle:hover:not(:disabled) { color: #191619; background: #f4eff1; }
 .password-toggle:not(:disabled):active { transform: translateY(-50%); }
 .password-toggle[aria-pressed="true"] { color: #b91d33; }
+
+/* Phone and tablet: chat column on the right with the last 5 messages and an unread badge */
+.mobile-chat { display: none; }
+@media (max-width: 1100px) {
+  .table-experience .game-layout { margin: 0; }
+  .table-experience .mobile-chat { position: absolute; z-index: 6; top: max(6px, env(safe-area-inset-top)); bottom: max(6px, env(safe-area-inset-bottom)); right: max(6px, env(safe-area-inset-right)); width: 150px; display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 12px; background: #1a130fee; box-shadow: -8px 0 24px #0009; transform: translateX(calc(100% + 16px)); transition: transform .25s ease; }
+  .table-experience .mobile-chat.is-open { transform: none; }
+  .table-experience .chat-handle { position: absolute; z-index: 5; top: 50%; right: 0; transform: translateY(-50%); width: 30px; height: 70px; padding: 0 0 0 2px; display: flex; align-items: center; justify-content: center; color: #ffe0a0; background: #241b16; border: 1px solid #9d784877; border-right: 0; border-radius: 12px 0 0 12px; box-shadow: -3px 0 10px #0007; }
+  .table-experience .chat-handle .chat-badge { top: 6px; right: auto; left: -8px; }
+  .table-experience .mobile-chat-open { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; flex-shrink: 0; color: #ffe0a0; background: #241b16; border: 1px solid #9d784855; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .table-experience .mobile-chat-open:hover { background: #4b3020; }
+  .mobile-chat-icon { position: relative; display: inline-flex; }
+  .chat-badge { position: absolute; top: -8px; right: -11px; min-width: 18px; height: 18px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: #e0263c; color: #fff; font-size: 10px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px #241b16; }
+  .table-experience .mobile-chat-feed { flex: 1; min-height: 0; margin: 0; padding: 6px; list-style: none; display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; overflow: hidden; cursor: pointer; background: #120e0bd9; border: 1px solid #9d784855; border-radius: 10px; }
+  .mobile-chat-feed li { flex-shrink: 0; padding: 4px 7px; border-radius: 8px; background: #2a201a; color: #f4ecdc; font-size: 10px; line-height: 1.3; }
+  .mobile-chat-feed li b { display: block; color: #ffe0a0; font-size: 9px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mobile-chat-feed li span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .mobile-chat-feed li.own-message { background: #3b2226; }
+  .mobile-chat-feed .mobile-chat-empty { background: transparent; color: #c9bba0; text-align: center; font-size: 10px; }
+  .table-experience .game-dock.game-dock-row { left: 50%; }
+}
+@media (max-width: 1100px) and (orientation: portrait) { .table-experience .mobile-chat, .table-experience .chat-handle { display: none; } }
+
+@media (prefers-reduced-motion: reduce) { .table-experience .mobile-chat { transition: none; } }
+
+/* Edit table (host, before the first deal) sits beside Leave */
+.game-page.table-experience .game-heading-actions .table-edit { min-height: 44px; padding: 8px 12px; font-size: 12px; color: #ffe0a0; background: #241b16; border-color: #9d7848; }
+.game-page.table-experience .game-heading-actions .table-edit:hover:not(:disabled) { background: #4b3020; border-color: #e0b778; }
+@media (min-width: 1101px) { .game-page.table-experience .game-heading-actions .table-edit { min-height: 38px; } }
+.capacity-picker button:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Scoreboard: player names and Total stay fixed; only the round rows scroll */
+.score-panel { display: flex; flex-direction: column; }
+.score-panel .round-score-history { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.score-panel .round-score-scroll { flex: 1; min-height: 0; max-height: 320px; overflow: auto; overscroll-behavior: contain; }
+.score-panel .round-score-history thead th { position: sticky; top: 0; z-index: 2; background: #f7f7ef; box-shadow: inset 0 -1px 0 #dfe5d6; }
+.score-panel .round-score-history tfoot th, .score-panel .round-score-history tfoot td { position: sticky; bottom: 0; z-index: 2; background: #eef0e3; box-shadow: inset 0 1px 0 #d5dccb; }
+.score-panel .round-score-history thead th:first-child, .score-panel .round-score-history tfoot th { z-index: 3; }
+.score-panel .round-score-history tfoot th:first-child { background: #eef0e3; }
+@media (min-width: 1101px) {
+  .table-experience .score-panel { overflow: hidden; }
+  .table-experience .score-panel .round-score-scroll { max-height: none; }
+}
+.game-tool-modal .score-panel .round-score-scroll { max-height: min(55dvh, 360px); }
+
+/* During a game, messages drop in at the top so they never cover your cards or buttons */
+.app-in-game .toast { top: calc(10px + env(safe-area-inset-top)); bottom: auto; max-width: min(520px, calc(100vw - 32px)); animation: toast-drop .2s ease-out; }
+@media (min-width: 1101px) { .app-in-game .toast { top: 64px; } }
+@media (max-width: 1100px) { .app-in-game .toast { bottom: auto; width: auto; padding: 8px 10px 8px 14px; font-size: 12px; } }
+@keyframes toast-drop { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .app-in-game .toast { animation: none; } }

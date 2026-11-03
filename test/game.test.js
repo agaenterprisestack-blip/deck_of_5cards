@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_RULES, GameError, createDeck, deckCount, createRoom, joinRoom, leaveRoom, startRound,
-  legalPlay, playTurn, expireTurn, showHand, finishMatch, abortMatch, startNextGame, handValue, roomView,
+  legalPlay, playTurn, expireTurn, showHand, finishMatch, abortMatch, startNextGame, updateTable, handValue, roomView,
 } from '../server/game.js';
 
 const card = (rank, suit = 'hearts', id = `${suit}-${rank}`) => ({ rank, suit, id });
@@ -919,4 +919,23 @@ test('play again resets a finished or aborted table for the seated players only'
   assert.equal(aborted.status, 'waiting');
   startRound(aborted, 'p0');
   assert.equal(aborted.status, 'playing');
+});
+test('the host can edit a waiting table, but settings lock once the cards are dealt', () => {
+  const room = createRoom('ABC234', { id: 'p0', name: 'Player 0' }, { name: 'Old name', capacity: 4 });
+  joinRoom(room, { id: 'p1', name: 'Player 1' });
+  joinRoom(room, { id: 'p2', name: 'Player 2' });
+  const settings = { name: 'New name', capacity: 3, pointsToEliminate: 150, showLimit: 10,
+    rules: { sameNumber: false, rummy: true, continuation: true } };
+  assert.throws(() => updateTable(room, 'p1', settings), /Only the host/);
+  assert.throws(() => updateTable(room, 'p0', { ...settings, capacity: 2 }), /3 players are already seated/);
+  updateTable(room, 'p0', settings);
+  assert.equal(room.name, 'New name');
+  assert.equal(room.capacity, 3);
+  assert.equal(room.pointsToEliminate, 150);
+  assert.equal(room.showLimit, 10);
+  assert.deepEqual(room.rules, { sameNumber: false, rummy: true, continuation: true, anyCard: true });
+  updateTable(room, 'p0', { ...settings, showLimit: null });
+  assert.equal(room.showLimit, null);
+  startRound(room, 'p0');
+  assert.throws(() => updateTable(room, 'p0', settings), /lock once the cards are dealt/);
 });

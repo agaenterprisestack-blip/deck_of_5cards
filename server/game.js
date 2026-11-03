@@ -366,6 +366,20 @@ export function abortMatch(room, userId) {
   room.lastAction = 'The host aborted the game. No scores or match history were saved.';
 }
 
+// Before the first deal, the host can change the table's settings.
+export function updateTable(room, userId, options) {
+  if (room.status !== 'waiting') throw new GameError('Table settings lock once the cards are dealt.');
+  if (room.hostId !== userId) throw new GameError('Only the host can edit this table.');
+  const seated = room.players.filter((player) => !player.left).length;
+  if (options.capacity < seated) throw new GameError(`${seated} players are already seated. Choose at least ${seated} seats.`);
+  room.name = options.name;
+  room.capacity = options.capacity;
+  room.pointsToEliminate = options.pointsToEliminate;
+  room.showLimit = [5, 10].includes(options.showLimit) ? options.showLimit : null;
+  room.rules = { ...DEFAULT_RULES, ...options.rules, anyCard: true };
+  room.lastAction = 'The host updated the table settings.';
+}
+
 // After a match ends (or is aborted), any seated player can set up the next game at the
 // same table: same code, name and house rules; scores, lives and rounds start fresh.
 // Players who went back to the lobby are not carried over, so their seats open again.

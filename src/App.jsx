@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { request, SERVER_URL } from './api.js';
-import { Avatar, FullscreenButton, Icon, Logo, Modal, RulesContent, ruleLabels } from './components.jsx';
+import { Avatar, FullscreenButton, Icon, Logo, Modal, RulesContent, TableForm } from './components.jsx';
 import Lobby, { History, Leaderboard, heroHeadlines } from './Lobby.jsx';
 import Game from './Game.jsx';
 
@@ -43,31 +43,6 @@ function AuthForm({ signup, onSwitch, onAuthenticated }) {
   </>;
 }
 
-function CreateForm({ send, busy, onDone }) {
-  const [rules, setRules] = useState({ sameNumber: true, rummy: false, continuation: false });
-  const [capacity, setCapacity] = useState(5);
-  const [showLimit, setShowLimit] = useState(null);
-  return <form className="form-stack" onSubmit={async (event) => {
-    event.preventDefault();
-    const name = new FormData(event.currentTarget).get('name');
-    const pointsToEliminate = Number(new FormData(event.currentTarget).get('pointsToEliminate'));
-    if (await send('room:create', { name, capacity, pointsToEliminate, showLimit, rules })) onDone();
-  }}>
-    <label>Table name<input name="name" placeholder="The usual suspects" minLength={2} maxLength={36} required autoFocus /></label>
-    <label>Seats at the table<span className="capacity-picker">{Array.from({ length: 9 }, (_, i) => i + 2).map((count) =>
-      <button key={count} type="button" aria-pressed={capacity === count} className={capacity === count ? 'active' : ''} onClick={() => setCapacity(count)}>{count}</button>)}</span></label>
-    <label>Points to eliminate<input name="pointsToEliminate" type="number" min={50} max={1001} step={1} defaultValue={201} required aria-describedby="points-help" /></label>
-    <p id="points-help" className="fine-print">Enter a whole number from 50 to 1,001. Players are eliminated when their score reaches this limit.</p>
-    <label>Show hand limit<span className="capacity-picker">{[[5, '5 pts'], [10, '10 pts'], [null, 'Any']].map(([limit, label]) =>
-      <button key={label} type="button" aria-pressed={showLimit === limit} className={showLimit === limit ? 'active' : ''} onClick={() => setShowLimit(limit)}>{label}</button>)}</span></label>
-    <p className="fine-print">{showLimit ? `Players can Show hand only when their hand is ${showLimit} points or less.` : 'Players can Show hand at any hand value. It is up to them when to show.'}</p>
-    <fieldset className="rule-options"><legend>Your house rules</legend>{Object.entries(rules).map(([rule, enabled]) => <label key={rule}>
-      <span>{ruleLabels[rule]}</span><input type="checkbox" checked={enabled} onChange={(event) => setRules((previous) => ({ ...previous, [rule]: event.target.checked }))} />
-    </label>)}</fieldset>
-    <p className="fine-print">At least 2 players to begin. The deck count adjusts automatically. Share the code after creating your table.</p>
-    <button className="button button-dark button-full" disabled={busy}>{busy ? 'Setting the table…' : 'Create my table'}<Icon name="arrow" size={17} /></button>
-  </form>;
-}
 
 export default function App() {
   const [headlineIndex, setHeadlineIndex] = useState(() => {
@@ -272,7 +247,8 @@ export default function App() {
           : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <History entries={data} user={user} loading={dataLoading} />}
     </main>
     <footer className="site-footer"><div><Logo /><span>designed by GpTechstack...</span></div><p>Made for the love of the game. <span>♠ ♥ ♣ ♦</span></p><button onClick={() => setModal('rules')}>House rules <Icon name="arrow" size={14} /></button></footer>
-    {modal === 'create' && <Modal title="Make it your table." subtitle="A name, a few rules, and your favorite people." notification={toast} onClose={() => setModal(null)}><CreateForm send={send} busy={busy} onDone={() => { setModal(null); setPage('play'); }} /></Modal>}
+    {modal === 'create' && <Modal title="Make it your table." subtitle="A name, a few rules, and your favorite people." notification={toast} onClose={() => setModal(null)}><TableForm busy={busy}
+      onSubmit={async (settings) => { if (await send('room:create', settings)) { setModal(null); setPage('play'); } }} /></Modal>}
     {modal === 'rules' && <Modal title="The art of keeping it low." subtitle="Your pocket guide to a very good card night." notification={toast} onClose={() => setModal(null)}><RulesContent /></Modal>}
     {toast && !modal && <div className={`toast toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}><Icon name={toast.type === 'error' ? 'chat' : 'check'} size={19} /><span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="Dismiss notification"><Icon name="close" size={16} /></button></div>}
   </div>;

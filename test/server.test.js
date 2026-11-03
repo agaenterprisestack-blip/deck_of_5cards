@@ -811,3 +811,40 @@ test('a reconnecting player whose table vanished sees no table and can always le
   assert.equal(left.ok, true, left.error);
   assert.equal(again.room, null);
 });
+
+test('room:update edits a waiting table for everyone and rejects invalid or late changes', async (t) => {
+  const store = await createStore();
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const clients = [];
+  t.after(async () => {
+    clients.forEach((client) => client.socket.disconnect());
+    await server.close();
+  });
+  for (const name of ['Host', 'Guest']) {
+    const user = await store.createPlayer(name);
+    const socket = io(url, { auth: { token: await store.session(user) }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { socket, room: null, emit: (event, data) => socket.timeout(4000).emitWithAck(event, data) };
+    socket.on('room', (room) => { client.room = room; });
+    clients.push(client);
+    await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); socket.connect(); });
+  }
+  const [host, guest] = clients;
+  assert.equal((await host.emit('room:create', { name: 'First', capacity: 3, rules: { sameNumber: true, rummy: false, continuation: false } })).ok, true);
+  await until(() => host.room);
+  assert.equal((await guest.emit('room:join', { code: host.room.code })).ok, true);
+  await until(() => host.room?.players.length === 2);
+  const settings = { name: 'Renamed', capacity: 2, pointsToEliminate: 120, showLimit: 5, rules: { sameNumber: true, rummy: true, continuation: false } };
+  assert.equal((await guest.emit('room:update', { revision: guest.room.revision, ...settings })).ok, false);
+  assert.equal((await host.emit('room:update', { revision: host.room.revision, ...settings, capacity: 11 })).ok, false);
+  const saved = await host.emit('room:update', { revision: host.room.revision, ...settings });
+  assert.equal(saved.ok, true, saved.error);
+  await until(() => guest.room?.name === 'Renamed', 'Every player should see the new settings');
+  assert.deepEqual([guest.room.capacity, guest.room.pointsToEliminate, guest.room.showLimit, guest.room.rules.rummy], [2, 120, 5, true]);
+  assert.equal((await host.emit('game:start', { revision: host.room.revision })).ok, true);
+  await until(() => host.room?.status === 'playing');
+  const late = await host.emit('room:update', { revision: host.room.revision, ...settings, name: 'Too late' });
+  assert.equal(late.ok, false);
+  assert.match(late.error, /lock once the cards are dealt/);
+});
