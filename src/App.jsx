@@ -8,6 +8,7 @@ import Game from './Game.jsx';
 function AuthForm({ signup, onSwitch, onAuthenticated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   return <>
     <form className="form-stack" onSubmit={async (event) => {
       event.preventDefault();
@@ -19,8 +20,14 @@ function AuthForm({ signup, onSwitch, onAuthenticated }) {
       finally { setBusy(false); }
     }}>
       <label>Username<input name="name" placeholder="Your unique player name" minLength={1} maxLength={24} autoComplete="username" required autoFocus disabled={busy} /></label>
-      <label>Password<input name="password" type="password" minLength={signup ? 4 : 1} maxLength={128}
-        autoComplete={signup ? 'new-password' : 'current-password'} required disabled={busy} /></label>
+      <label>Password<span className="password-field">
+        <input name="password" type={showPassword ? 'text' : 'password'} minLength={signup ? 4 : 1} maxLength={128}
+          autoComplete={signup ? 'new-password' : 'current-password'} autoCapitalize="off" autoCorrect="off" spellCheck={false} required disabled={busy} />
+        <button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'}
+          title={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} disabled={busy}
+          onClick={(event) => { event.preventDefault(); setShowPassword((shown) => !shown); }}>
+          <Icon name={showPassword ? 'eyeOff' : 'eye'} size={19} /></button>
+      </span></label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="button button-dark button-full" disabled={busy}>{busy ? 'One moment…' : signup ? 'Create account' : 'Log in'}<Icon name="arrow" size={17} /></button>
       <p className="fine-print">{signup ? 'Usernames are unique regardless of capitalization. Use a password of 4–128 characters. Keep it safe: password recovery is not available yet.' : 'Log in to recover your player profile, scores, and reserved seat.'}</p>
@@ -62,18 +69,6 @@ function CreateForm({ send, busy, onDone }) {
   </form>;
 }
 
-const inviteCode = /^[A-Z2-9]{6}$/;
-// An invite link (?join=CODE) is remembered until the player is signed in and connected.
-function readInvite() {
-  const fromUrl = new URLSearchParams(window.location.search).get('join')?.trim().toUpperCase();
-  if (fromUrl && inviteCode.test(fromUrl)) {
-    sessionStorage.setItem('five-cards-join', fromUrl);
-    return fromUrl;
-  }
-  const saved = sessionStorage.getItem('five-cards-join');
-  return saved && inviteCode.test(saved) ? saved : '';
-}
-
 export default function App() {
   const [headlineIndex, setHeadlineIndex] = useState(() => {
     const saved = Number(sessionStorage.getItem('five-cards-headline'));
@@ -97,9 +92,6 @@ export default function App() {
   const [dataError, setDataError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [sound, setSound] = useState(false);
-  const [pendingJoin, setPendingJoin] = useState(readInvite);
-  const [roomSynced, setRoomSynced] = useState(false);
-  const askedToSignIn = useRef(false);
   const audioContext = useRef(null);
   const notify = useCallback((message, type = 'error') => setToast({ message, type, id: Date.now() }), []);
   const clearSession = useCallback(() => {
@@ -133,7 +125,7 @@ export default function App() {
   useEffect(() => {
     if (!token || !user) return;
     const connection = io(SERVER_URL || undefined, { auth: { token }, autoConnect: false });
-    connection.on('connect', () => { setConnected(true); setBackendError(''); setRoomSynced(false); });
+    connection.on('connect', () => { setConnected(true); setBackendError(''); });
     connection.on('disconnect', (reason) => {
       setConnected(false);
       if (reason === 'io server disconnect') {
@@ -147,7 +139,7 @@ export default function App() {
       } else setBackendError(error.message);
     });
     connection.on('lobby', setRooms);
-    connection.on('room', (next) => { setRoom(next); setRoomSynced(true); });
+    connection.on('room', setRoom);
     connection.on('server:error', ({ error }) => notify(error));
     setSocket(connection);
     connection.connect();
@@ -209,36 +201,6 @@ export default function App() {
     finally { setBusy(false); }
   }
   const signIn = () => setPage('login');
-  // Tidy the address bar once an invite link has been read.
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has('join')) return;
-    url.searchParams.delete('join');
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-  }, []);
-  // Join the invited table once signed in and the server has said where we are seated.
-  useEffect(() => {
-    if (!pendingJoin || restoring) return;
-    if (!user) {
-      if (!askedToSignIn.current) {
-        askedToSignIn.current = true;
-        setPage('login');
-        notify(`Log in or continue as a guest to join table ${pendingJoin}.`, 'success');
-      }
-      return;
-    }
-    if (!connected || !roomSynced) return;
-    const code = pendingJoin;
-    setPendingJoin('');
-    sessionStorage.removeItem('five-cards-join');
-    if (room?.code === code) return;
-    if (room) {
-      notify(`You are already at table ${room.code}. Leave it first to join ${code}.`);
-      return;
-    }
-    setPage('play');
-    send('room:join', { code }).then((joined) => { if (joined) notify(`You joined table ${code}.`, 'success'); });
-  }, [pendingJoin, restoring, user, connected, roomSynced, room]);
   function navigate(next) {
     if (!user && next !== 'play') { signIn(); return; }
     setPage(next);

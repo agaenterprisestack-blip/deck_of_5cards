@@ -1242,10 +1242,10 @@ body { background: #f8f7f7; }
 .next-game-actions .button { margin: 0; }
 .table-experience .next-game-actions .button-outline { color: #fff4dc; border-color: #b8d3b8; background: #103e2c; }
 
-/* Invite link buttons */
-.waiting-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
-.waiting-actions .button { margin: 0; }
-.table-experience .invite-button { color: #fff4dc; border-color: #b8d3b8; background: #103e2c; }
-.table-experience .invite-button:hover { background: #18553c; }
-.table-experience .invite-icon { color: #ffe0a0; }
-@media (max-width: 1100px) { .game-page .game-heading-actions .invite-icon { display: inline-flex; min-width: 44px; min-height: 44px; } }
+/* Show / hide password */
+.password-field { position: relative; display: block; }
+.form-stack .password-field input:not([type="checkbox"]) { padding-right: 52px; }
+.password-toggle { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 40px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #776e72; }
+.password-toggle:hover:not(:disabled) { color: #191619; background: #f4eff1; }
+.password-toggle:not(:disabled):active { transform: translateY(-50%); }
+.password-toggle[aria-pressed="true"] { color: #b91d33; }
