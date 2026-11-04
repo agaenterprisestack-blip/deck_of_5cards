@@ -21,11 +21,11 @@ function hands(room, ranks) {
 }
 
 test('deck sizing covers every supported table size and includes two jokers per deck', () => {
-  assert.deepEqual([2, 3, 4, 5, 6, 7, 8, 9, 10].map(deckCount), [1, 1, 2, 2, 3, 3, 3, 4, 4]);
-  const deck = createDeck(4);
-  assert.equal(deck.length, 216);
-  assert.equal(new Set(deck.map((entry) => entry.id)).size, 216);
-  assert.equal(deck.filter((entry) => entry.rank === 0).length, 8);
+  assert.deepEqual([2, 3, 4, 5, 6, 7, 8, 9, 10].map(deckCount), [1, 1, 2, 2, 2, 3, 3, 3, 3]);
+  const deck = createDeck(3);
+  assert.equal(deck.length, 162);
+  assert.equal(new Set(deck.map((entry) => entry.id)).size, 162);
+  assert.equal(deck.filter((entry) => entry.rank === 0).length, 6);
 });
 test('all 2–10 player games deal five cards and reveal one starter', () => {
   for (let count = 2; count <= 10; count++) {
@@ -938,4 +938,35 @@ test('the host can edit a waiting table, but settings lock once the cards are de
   assert.equal(room.showLimit, null);
   startRound(room, 'p0');
   assert.throws(() => updateTable(room, 'p0', settings), /lock once the cards are dealt/);
+});
+test('final standings rank by who stayed in the match longest, not by points', async () => {
+  const { matchStandings, standingStatus } = await import('../src/standings.js');
+  const room = fixture(4);
+  room.players[3].score = 10;
+  room.turnId = 'p1';
+  leaveRoom(room, 'p3');
+  assert.equal(room.players[3].outSeq, 1);
+  room.turnId = 'p2';
+  room.players[2].lives = 1;
+  room.players[2].score = 30;
+  expireTurn(room);
+  assert.equal(room.players[2].outSeq, 2);
+  room.players[0].score = 20;
+  room.players[1].score = 190;
+  hands(room, [[1], [13, 13], [], []]);
+  showHand(room, 'p0');
+  assert.equal(room.status, 'finished');
+  assert.equal(room.players[1].outSeq, 3);
+  // Players who left are no longer sent to the table, so the scorecard lists those who stayed.
+  const standings = matchStandings(roomView(room, 'p0'));
+  assert.deepEqual(standings.map((player) => [player.id, player.place]), [['p0', 1], ['p1', 2], ['p2', 3]]);
+  assert.deepEqual(standings.map(standingStatus), ['Champion', 'Out in round 1', 'Out in round 1']);
+  assert.equal(standingStatus({ ...room.players[3], winner: false }), 'Left in round 1');
+});
+test('players knocked out together are split by points, and exact ties share a place', async () => {
+  const { matchStandings } = await import('../src/standings.js');
+  const base = { winnerIds: ['w'], results: [] };
+  const player = (id, score, outSeq, eliminated = true) => ({ id, name: id, score, outSeq, eliminated });
+  const standings = matchStandings({ ...base, players: [player('a', 230, 4), player('b', 210, 4), player('c', 230, 4), player('w', 50, undefined, false), player('d', 120, 2)] });
+  assert.deepEqual(standings.map((row) => `${row.id}:${row.place}`), ['w:1', 'b:2', 'a:3', 'c:3', 'd:5']);
 });

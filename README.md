@@ -12,7 +12,7 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173`. Choose **Log in**, then **Sign up** to create a username and password. Register two different players in **two separate browser tabs** (each tab has its own session), create a table, and join with its six-character code. Any seated player can press **Deal the cards** once every seat at the table is filled; there is no need to wait for the host. Choose a capacity from two to ten when creating a table; two or three players use one deck.
+Open `http://localhost:5173`. Choose **Log in**, then **Sign up** to create a username and password. Register two different players in **two separate browser tabs** (each tab has its own session), create a table, and join with its six-character code. Any seated player can press **Deal the cards** once every seat at the table is filled; there is no need to wait for the host. Choose a capacity from two to ten when creating a table. Decks are shuffled together by player count: 1 deck (54 cards with 2 Jokers) for 2–3 players, 2 decks (108) for 4–6, and 3 decks (162) for 7–10.
 
 Without `DATABASE_URL`, the server explicitly runs in **development memory mode**: player sessions and completed history disappear on restart. A banner appears in the UI. No external service is needed to try the game.
 

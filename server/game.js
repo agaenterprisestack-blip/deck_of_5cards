@@ -9,8 +9,9 @@ export const DEFAULT_RULES = {
   continuation: false,
 };
 
+// Decks shuffled together for a round: 1 for 2–3 players, 2 for 4–6, 3 for 7–10.
 export function deckCount(players) {
-  return players <= 3 ? 1 : players <= 5 ? 2 : players <= 8 ? 3 : 4;
+  return players <= 3 ? 1 : players <= 6 ? 2 : 3;
 }
 
 export function createDeck(count) {
@@ -109,6 +110,17 @@ export function joinRoom(room, user) {
   room.players.push({ id: user.id, name: user.name, score: 0, hand: [], eliminated: false, lives: 5 });
 }
 
+// Record the order players drop out of a match (points limit, no lives left, or leaving).
+// Players who go out together share a number; a higher number means they stayed longer.
+function markOut(room, players) {
+  if (!players.length) return;
+  room.outCount = (room.outCount || 0) + 1;
+  for (const player of players) {
+    player.outSeq = room.outCount;
+    player.outRound = room.round;
+  }
+}
+
 export function leaveRoom(room, userId) {
   const player = room.players.find((entry) => entry.id === userId && !entry.left);
   if (!player) throw new GameError('Join a table first.');
@@ -118,6 +130,7 @@ export function leaveRoom(room, userId) {
     if (room.status === 'playing' && room.turnId === userId && !player.eliminated) advance(room, player);
     player.left = true;
     if (['playing', 'roundEnd'].includes(room.status)) {
+      if (!player.eliminated) markOut(room, [player]);
       player.eliminated = true;
       room.completedTurnIds = room.completedTurnIds.filter((id) => id !== userId);
       room.lastAction = `${player.name} left the match.`;
@@ -284,6 +297,7 @@ export function expireTurn(room) {
     advance(room, player);
     player.lives = 0;
     player.eliminated = true;
+    markOut(room, [player]);
     room.lastAction = `${player.name} lost their last life after 5 missed turns and is now watching.`;
     const survivors = room.players.filter((entry) => !entry.eliminated);
     if (survivors.length === 1) {
@@ -306,15 +320,18 @@ export function expireTurn(room) {
 
 function settleRound(room, { showingId, clash, successful, minimum, message, penaltyFor }) {
   const active = room.players.filter((player) => !player.eliminated);
+  const knockedOut = [];
   const scores = active.map((player) => {
     const penalty = penaltyFor(player);
     player.score += penalty;
     player.eliminated = player.score >= room.pointsToEliminate;
+    if (player.eliminated) knockedOut.push(player);
     return {
       id: player.id, name: player.name, hand: [...player.hand],
       value: handValue(player.hand), penalty, score: player.score, eliminated: player.eliminated,
     };
   });
+  markOut(room, knockedOut);
   const survivors = room.players.filter((player) => !player.eliminated);
   room.status = survivors.length <= 1 ? 'finished' : 'roundEnd';
   room.turnId = null;
@@ -393,7 +410,7 @@ export function startNextGame(room, userId) {
   Object.assign(room, {
     status: 'waiting', round: 0, turnId: null, turnDeadline: null, nextRoundDeadline: null,
     completedTurnIds: [], drawPile: [], discardPile: [], lastPlay: [], results: [],
-    winnerId: null, winnerIds: [], matchId: randomUUID(), createdAt: Date.now(),
+    winnerId: null, winnerIds: [], matchId: randomUUID(), createdAt: Date.now(), outCount: 0,
   });
   room.lastAction = `${player.name} set up the next game. Deal when every seat is filled.`;
 }

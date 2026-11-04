@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, Card, Icon, Modal, TableForm, rankLabel, ruleLabels } from './components.jsx';
+import { matchStandings, standingStatus } from './standings.js';
 
 const compactTableQuery = '(max-width: 1100px)';
 const clockwiseSeatLayouts = {
@@ -116,18 +117,6 @@ function WinnerCelebration({ winners, round, match = false }) {
 
 const placeLabel = (place) => ['1st', '2nd', '3rd'][place - 1] || `${place}th`;
 
-// Final standings: winners first, then players still in, then lowest score.
-function matchStandings(room) {
-  const winners = new Set(room.winnerIds || []);
-  return room.players.map((player) => ({
-    ...player,
-    winner: winners.has(player.id),
-    zeroRounds: room.results.filter((result) =>
-      result.scores.some((entry) => entry.id === player.id && entry.penalty === 0)).length,
-  })).sort((a, b) => b.winner - a.winner || a.eliminated - b.eliminated || a.score - b.score
-    || a.name.localeCompare(b.name));
-}
-
 function MatchScorecard({ room, user, busy, notify, onClose, onLeave, onNextGame }) {
   const standings = matchStandings(room);
   const winners = standings.filter((player) => player.winner);
@@ -142,7 +131,7 @@ function MatchScorecard({ room, user, busy, notify, onClose, onLeave, onNextGame
     : 'Match complete';
   async function copyResult() {
     const lines = standings.map((player, index) =>
-      `${placeLabel(index + 1)}  ${player.name} · ${player.score} pts${player.winner ? ' 🏆' : player.eliminated ? ' (out)' : ''}`);
+      `${placeLabel(player.place)}  ${player.name} · ${player.score} pts${player.winner ? ' 🏆' : player.eliminated ? ` (${standingStatus(player).toLowerCase()})` : ''}`);
     const text = [`5 Cards · ${room.name}`, headline, `${rounds} round${rounds === 1 ? '' : 's'} · out at ${room.pointsToEliminate} pts`, '', ...lines].join('\n');
     try {
       await navigator.clipboard.writeText(text);
@@ -166,11 +155,11 @@ function MatchScorecard({ room, user, busy, notify, onClose, onLeave, onNextGame
       <ol className="scorecard-list">
         {standings.map((player, index) => <li key={player.id}
           className={`scorecard-row ${player.winner ? 'is-winner' : ''} ${player.eliminated ? 'is-out' : ''} ${player.id === user.id ? 'is-you' : ''}`}>
-          <span className={`scorecard-place place-${index + 1}`}>{placeLabel(index + 1)}</span>
+          <span className={`scorecard-place place-${player.place}`}>{placeLabel(player.place)}</span>
           <Avatar name={player.name} index={room.players.findIndex((entry) => entry.id === player.id)} small />
           <div className="scorecard-player">
             <b>{player.name}{player.id === user.id ? ' (you)' : ''}</b>
-            <span>{player.winner ? 'Champion' : player.eliminated ? 'Eliminated' : 'Survived'} · {player.zeroRounds} zero round{player.zeroRounds === 1 ? '' : 's'}</span>
+            <span>{standingStatus(player)} · {player.zeroRounds} zero round{player.zeroRounds === 1 ? '' : 's'}</span>
           </div>
           <span className="scorecard-points"><b>{player.score}</b>pts</span>
         </li>)}
