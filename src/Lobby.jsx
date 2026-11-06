@@ -13,8 +13,20 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
   const headline = heroHeadlines[headlineIndex];
   const joinable = rooms.filter((room) => room.status === 'waiting');
   const filtered = joinable.filter((room) => filter !== 'open' || room.count < room.capacity);
+  const seatsOpen = joinable.reduce((total, room) => total + Math.max(0, room.capacity - room.count), 0);
+  // The card fan leans toward the pointer (mouse or pen only; touch scrolls normally).
+  function tilt(event) {
+    if (event.pointerType === 'touch') return;
+    const box = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty('--tilt-x', ((event.clientX - box.left) / box.width - 0.5).toFixed(3));
+    event.currentTarget.style.setProperty('--tilt-y', ((event.clientY - box.top) / box.height - 0.5).toFixed(3));
+  }
+  function resetTilt(event) {
+    event.currentTarget.style.setProperty('--tilt-x', 0);
+    event.currentTarget.style.setProperty('--tilt-y', 0);
+  }
   return <>
-    <section className="hero">
+    <section className="hero" onPointerMove={tilt} onPointerLeave={resetTilt}>
       <div className="hero-text">
         <span className="eyebrow"><span className="tiny-diamond">♦</span> GOOD COMPANY. GREAT HANDS.</span>
         <h1>{headline.first}<br />{headline.second} <em>{headline.emphasis}</em></h1>
@@ -23,8 +35,13 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
           <Icon name="plus" size={18} /> {user ? 'Create a table' : 'Let’s play'} <Icon name="arrow" size={18} />
         </button>
         <div className="hero-details"><span><Icon name="users" size={15} /> 2–10 players</span><span className="detail-dot" /><span>Free to play. Made for friends.</span></div>
+        <div className="hero-stats" aria-label="Right now">
+          <span><b>{joinable.length}</b>Live tables</span>
+          <span><b>{seatsOpen}</b>Open seats</span>
+          <span><b>5</b>Cards each</span>
+        </div>
       </div>
-      <div className="hero-art" aria-hidden="true">
+      <div className="hero-art" aria-hidden="true"><div className="hero-stage">
         <div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" />
         <span className="floating-suit suit-one">♣</span><span className="floating-suit suit-two">♦</span>
         <div className="hero-card hero-card-back"><Card back /></div>
@@ -32,7 +49,7 @@ export default function Lobby({ user, rooms, onCreate, onJoin, onRules, connecte
         <div className="hero-card hero-card-ace"><Card card={{ rank: 1, suit: 'hearts' }} /></div>
         <span className="hero-sticker"><span>LESS IS</span><b>MORE</b><span>EST. 2026</span></span>
         <span className="handwritten">Your kind of card night.</span>
-      </div>
+      </div></div>
     </section>
 
     <div className="lobby-layout">

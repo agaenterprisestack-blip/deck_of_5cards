@@ -3,6 +3,7 @@ import { Avatar, Card, Icon, Modal, TableForm, rankLabel, ruleLabels } from './c
 import { matchStandings, standingStatus } from './standings.js';
 
 const compactTableQuery = '(max-width: 1100px)';
+const TURN_SECONDS = 15; // Matches TURN_MS on the server; drives the countdown ring.
 const clockwiseSeatLayouts = {
   1: [[50, 10]],
   2: [[9, 48], [91, 48]],
@@ -355,7 +356,10 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
   const textMessages = room.chat.filter((message) => !reactions.some(([emoji]) => emoji === message.text));
   const recentMessages = textMessages.slice(-5);
   const unreadChat = textMessages.filter((message) => message.at > chatSeenAt && message.userId !== user.id).length;
-  return <div className={`game-page table-experience ${controlsOpen ? 'table-controls-open' : ''} ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''} ${myTurn ? 'my-turn' : ''} ${myTurn && seconds <= 5 ? 'my-turn-urgent' : ''}`}
+  // Share of the turn left (1 → 0); the glowing ring around the active player drains with it.
+  const turnProgress = room.status === 'playing' ? Math.min(1, seconds / TURN_SECONDS) : 1;
+  return <div className={`game-page table-experience ${controlsOpen ? 'table-controls-open' : ''} ${room.status === 'playing' ? 'game-playing' : ''} ${isRoundEnd || isFinished ? 'game-outcome' : ''} ${myTurn ? 'my-turn' : ''} ${myTurn && seconds <= 5 ? 'my-turn-urgent' : ''} ${room.status === 'playing' && seconds <= 5 ? 'turn-urgent' : ''}`}
+    style={{ '--turn-progress': turnProgress }}
     onPointerDownCapture={(event) => {
       // Tapping anywhere on the game area closes the chat drawer.
       if (chatDrawerOpen && !event.target.closest('.mobile-chat, .chat-handle, [role="dialog"]')) setChatDrawerOpen(false);

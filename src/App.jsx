@@ -220,6 +220,7 @@ export default function App() {
     } catch (error) { notify(error.message); }
   }
   return <div className={`app-shell ${page === 'play' && room && user ? 'app-in-game' : ''}`}>
+    <div className="neon-backdrop" aria-hidden="true"><span className="neon-orb orb-a" /><span className="neon-orb orb-b" /><span className="neon-floor" /></div>
     <header className="site-header"><div className="header-inner">
       <button className="logo-button" aria-label="5 Cards home" onClick={() => navigate('play')}><Logo /></button>
       <nav className="main-nav" aria-label="Main navigation">

@@ -132,7 +132,8 @@ export function ProfileEditor({ user, onSave, busy }) {
 export const rankLabel = (rank) => ({ 0: 'JK', 1: 'A', 11: 'J', 12: 'Q', 13: 'K' })[rank] || rank;
 
 const suitSymbols = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
-const cardSerif = "Georgia, 'Times New Roman', serif";
+const cardSerif = "'Space Grotesk', 'Segoe UI', Arial, sans-serif";
+const cardInk = '#0f0c26';
 
 const skin = '#f4d3b5';
 const skinLine = '#c99a76';
@@ -143,17 +144,18 @@ const goldLine = '#a87a2c';
 // upside-down corner, so 6 and 9 never get confused) and one big center suit.
 function CardFace({ card, className }) {
   const red = ['hearts', 'diamonds'].includes(card.suit);
-  const color = red ? '#cf2435' : '#1b1d21';
+  // Neon arcade deck: hot pink for red suits, electric cyan for black suits.
+  const color = red ? '#ff3d8f' : '#3be8ff';
   const suit = suitSymbols[card.suit];
   const label = String(rankLabel(card.rank));
   return <svg className={className} viewBox="0 0 100 144" aria-hidden="true">
-    <rect width="100" height="144" fill="#fff" />
-    <rect x="3" y="3" width="94" height="138" rx="7" fill="none" stroke="#e7e2d8" strokeWidth="1.2" />
+    <rect width="100" height="144" fill={cardInk} />
+    <rect x="3" y="3" width="94" height="138" rx="7" fill="none" stroke={color} strokeOpacity=".45" strokeWidth="1.2" />
     <g fill={color} fontFamily={cardSerif} fontWeight="700" textAnchor="middle">
       <text x="17" y="35" fontSize={label.length > 1 ? 29 : 35} letterSpacing={label.length > 1 ? -2.5 : 0}>{label}</text>
       <text x="17" y="62" fontSize="27">{suit}</text>
     </g>
-    <text x="58" y={card.rank === 1 ? 118 : 112} textAnchor="middle" fontSize={card.rank === 1 ? 72 : 60} fill={color}>{suit}</text>
+    <text x="58" y={card.rank === 1 ? 118 : 112} textAnchor="middle" fontSize={card.rank === 1 ? 72 : 60} fill={color} opacity=".9">{suit}</text>
   </svg>;
 }
 
@@ -162,9 +164,9 @@ function JokerFace({ className }) {
   const purple = '#6a3fa0';
   const green = '#1f8a5b';
   return <svg className={className} viewBox="0 0 100 144" aria-hidden="true">
-    <rect width="100" height="144" fill="#fff" />
-    <rect x="3" y="3" width="94" height="138" rx="7" fill="none" stroke="#e7e2d8" strokeWidth="1.2" />
-    <rect x="35" y="14" width="57" height="122" rx="9" fill="#f5effb" stroke={purple} strokeWidth="1.4" />
+    <rect width="100" height="144" fill={cardInk} />
+    <rect x="3" y="3" width="94" height="138" rx="7" fill="none" stroke="#b98cff" strokeOpacity=".5" strokeWidth="1.2" />
+    <rect x="35" y="14" width="57" height="122" rx="9" fill="#1d1645" stroke="#b98cff" strokeWidth="1.4" />
     <path d="M39 132 C39 110 50 102 63 102 C76 102 87 110 87 132 Z" fill={green} />
     <path d="M62 102 L62 132" stroke={purple} strokeWidth="6" />
     <path d="M40 101 L45 109 L50 101 L55 109 L60 101 L65 109 L70 101 L75 109 L80 101 L84 106 L40 106 Z" fill="#fff" stroke={purple} strokeWidth="1" strokeLinejoin="round" />
@@ -178,7 +180,7 @@ function JokerFace({ className }) {
     <path d="M62 30 C65 44 68 58 70 74 L62 74 Z" fill={green} />
     <rect x="48" y="70" width="28" height="7" rx="3" fill={gold} stroke={goldLine} strokeWidth=".8" />
     <g fill={gold} stroke={goldLine} strokeWidth=".8"><circle cx="40" cy="48" r="3.6" /><circle cx="84" cy="48" r="3.6" /><circle cx="62" cy="29" r="3.8" /></g>
-    <g fill={purple} fontFamily={cardSerif} fontWeight="700" textAnchor="middle">
+    <g fill="#b98cff" fontFamily={cardSerif} fontWeight="700" textAnchor="middle">
       <text x="17" y="33" fontSize="25" letterSpacing="-2">JK</text>
       <text x="17" y="58" fontSize="22" fill={gold}>★</text>
     </g>
