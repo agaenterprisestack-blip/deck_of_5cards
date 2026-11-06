@@ -83,7 +83,7 @@ export function createRoom(code, host, options = {}) {
     showLimit: [5, 10].includes(options.showLimit) ? options.showLimit : null,
     // Any single card can always be dropped, so every player has a legal move.
     rules: { ...DEFAULT_RULES, ...options.rules, anyCard: true },
-    players: [{ id: host.id, name: host.name, score: 0, hand: [], eliminated: false, lives: 5 }],
+    players: [{ id: host.id, name: host.name, avatar: host.avatar ?? null, score: 0, hand: [], eliminated: false, lives: 5 }],
     status: 'waiting',
     round: 0,
     dealerIndex: -1,
@@ -107,7 +107,7 @@ export function joinRoom(room, user) {
   if (room.players.some((player) => player.id === user.id)) return;
   if (room.status !== 'waiting') throw new GameError('This match has already started.');
   if (room.players.length >= room.capacity) throw new GameError('This table is full.');
-  room.players.push({ id: user.id, name: user.name, score: 0, hand: [], eliminated: false, lives: 5 });
+  room.players.push({ id: user.id, name: user.name, avatar: user.avatar ?? null, score: 0, hand: [], eliminated: false, lives: 5 });
 }
 
 // Record the order players drop out of a match (points limit, no lives left, or leaving).
@@ -405,7 +405,7 @@ export function startNextGame(room, userId) {
   const player = room.players.find((entry) => entry.id === userId && !entry.left);
   if (!player) throw new GameError('Join this table first.');
   room.players = room.players.filter((entry) => !entry.left)
-    .map(({ id, name }) => ({ id, name, score: 0, hand: [], eliminated: false, lives: 5 }));
+    .map(({ id, name, avatar }) => ({ id, name, avatar: avatar ?? null, score: 0, hand: [], eliminated: false, lives: 5 }));
   if (!room.players.some((entry) => entry.id === room.hostId)) room.hostId = player.id;
   Object.assign(room, {
     status: 'waiting', round: 0, turnId: null, turnDeadline: null, nextRoundDeadline: null,

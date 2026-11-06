@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
-const publicUser = (user) => ({ id: user.id, name: user.name, isGuest: Boolean(user.isGuest) });
+const publicUser = (user) => ({ id: user.id, name: user.name, isGuest: Boolean(user.isGuest), avatar: user.avatar ?? null });
 const deriveKey = promisify(scrypt);
 const usernameKey = (name) => name.trim().normalize('NFKC').toLowerCase();
 const passwordKey = (password, salt) => deriveKey(password, salt, 64, { N: 16384, r: 8, p: 1 });
@@ -62,7 +62,7 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
       let account;
       if (pool) {
         const { rows } = await pool.query(
-          'SELECT p.id,p.name,a.password_hash FROM accounts a JOIN players p ON p.id=a.player_id WHERE a.username_key=$1',
+          'SELECT p.id,p.name,p.avatar,a.password_hash FROM accounts a JOIN players p ON p.id=a.player_id WHERE a.username_key=$1',
           [usernameKey(name)]);
         if (rows[0]) account = { user: publicUser(rows[0]), hash: rows[0].password_hash };
       } else account = accounts.get(usernameKey(name));
@@ -98,13 +98,21 @@ export async function createStore({ databaseUrl, sslMode = 'disable', production
       if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
       if (pool) {
         const { rows } = await pool.query(
-          `SELECT p.id,p.name,NOT EXISTS (SELECT 1 FROM accounts a WHERE a.player_id=p.id) AS "isGuest"
+          `SELECT p.id,p.name,p.avatar,NOT EXISTS (SELECT 1 FROM accounts a WHERE a.player_id=p.id) AS "isGuest"
            FROM players p JOIN sessions s ON s.player_id=p.id WHERE s.token_hash=$1 AND s.expires_at>NOW()`,
           [hashToken(token)]);
         return rows[0] || null;
       }
       const session = sessions.get(hashToken(token));
       return session && session.expires > Date.now() ? session.user : null;
+    },
+    async setAvatar(userId, avatar) {
+      if (pool) {
+        await pool.query('UPDATE players SET avatar=$1 WHERE id=$2', [avatar, userId]);
+        return;
+      }
+      for (const session of sessions.values()) if (session.user.id === userId) session.user.avatar = avatar;
+      for (const account of accounts.values()) if (account.user.id === userId) account.user.avatar = avatar;
     },
     async logout(token) {
       if (pool) await pool.query('DELETE FROM sessions WHERE token_hash=$1', [hashToken(token)]);

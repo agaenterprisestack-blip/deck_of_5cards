@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS players (
 -- Preserve historical guest rows; registered credentials live in accounts.
 ALTER TABLE players ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE players ALTER COLUMN password_hash DROP NOT NULL;
+-- Profile picture: initials colour, a preset emoji, or a small photo (data URL).
+ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar TEXT;
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { avatarColors, avatarEmoji, parseAvatar } from './avatars.js';
 
 const iconPaths = {
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
@@ -62,10 +63,70 @@ export function Logo() {
   return <span className="brand"><span className="brand-mark">5<span>♠</span></span><span>5 Cards<span className="brand-dot">.</span></span></span>;
 }
 
-export function Avatar({ name = '?', index = 0, small = false }) {
-  return <span className={`avatar avatar-${index % 5} ${small ? 'avatar-small' : ''}`} aria-hidden="true">
-    {name.trim().split(/\s+/).map((word) => word[0]).slice(0, 2).join('').toUpperCase()}
+const initialsOf = (name) => name.trim().split(/\s+/).map((word) => word[0]).slice(0, 2).join('').toUpperCase();
+
+// A player's picture: their photo, chosen emoji or initials, or coloured initials by seat.
+export function Avatar({ name = '?', index = 0, small = false, avatar = null }) {
+  const choice = parseAvatar(avatar);
+  const size = small ? 'avatar-small' : '';
+  if (choice?.kind === 'photo') return <span className={`avatar avatar-photo ${size}`} aria-hidden="true"><img src={choice.src} alt="" draggable={false} /></span>;
+  const style = choice ? { background: avatarColors[choice.color] } : undefined;
+  return <span className={`avatar ${choice ? 'avatar-custom' : `avatar-${index % 5}`} ${size} ${choice?.kind === 'emoji' ? 'avatar-emoji' : ''}`} style={style} aria-hidden="true">
+    {choice?.kind === 'emoji' ? choice.emoji : initialsOf(name)}
   </span>;
+}
+
+// Shrink and crop a chosen image to a 128×128 JPEG so it stays small (about 10 KB).
+async function photoToAvatar(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('That file is not a picture we can read.'));
+      element.src = url;
+    });
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    canvas.getContext('2d').drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 128, 128);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+// Profile picture editor: initials, an emoji, or a photo, each with a background colour.
+export function ProfileEditor({ user, onSave, busy }) {
+  const current = parseAvatar(user.avatar);
+  const [kind, setKind] = useState(current?.kind || 'initials');
+  const [color, setColor] = useState(current?.color ?? 0);
+  const [emoji, setEmoji] = useState(current?.emoji || avatarEmoji[0]);
+  const [photo, setPhoto] = useState(current?.src || null);
+  const [error, setError] = useState('');
+  const fileInput = useRef(null);
+  const value = kind === 'photo' ? photo : kind === 'emoji' ? `emoji:${color}:${emoji}` : `initials:${color}`;
+  return <section className="profile-editor" aria-labelledby="profile-editor-title">
+    <div className="profile-preview"><Avatar name={user.name} avatar={value} /><div><h2 id="profile-editor-title">Your table picture</h2><p>Everyone at the table sees it on your seat.</p></div></div>
+    <div className="capacity-picker profile-kind">{[['initials', 'Initials'], ['emoji', 'Emoji'], ['photo', 'Photo']].map(([option, label]) =>
+      <button key={option} type="button" aria-pressed={kind === option} className={kind === option ? 'active' : ''} onClick={() => setKind(option)}>{label}</button>)}</div>
+    {kind !== 'photo' && <div className="profile-colors" role="group" aria-label="Background colour">{avatarColors.map((swatch, index) =>
+      <button key={swatch} type="button" aria-label={`Colour ${index + 1}`} aria-pressed={color === index} className={color === index ? 'active' : ''} style={{ background: swatch }} onClick={() => setColor(index)} />)}</div>}
+    {kind === 'emoji' && <div className="profile-emoji" role="group" aria-label="Emoji">{avatarEmoji.map((option) =>
+      <button key={option} type="button" aria-pressed={emoji === option} className={emoji === option ? 'active' : ''} onClick={() => setEmoji(option)}>{option}</button>)}</div>}
+    {kind === 'photo' && <div className="profile-photo">
+      <input ref={fileInput} type="file" accept="image/*" hidden onChange={async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        setError('');
+        try { setPhoto(await photoToAvatar(file)); } catch (failure) { setError(failure.message); }
+      }} />
+      <button type="button" className="button button-outline" onClick={() => fileInput.current?.click()}>{photo ? 'Choose a different photo' : 'Choose a photo'}</button>
+      <p className="fine-print">Your photo is cropped to a square and made small before it is saved. Please use a picture you are happy for other players to see.</p>
+    </div>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <button type="button" className="button button-dark" disabled={busy || (kind === 'photo' && !photo) || value === user.avatar}
+      onClick={() => onSave(value)}>{busy ? 'Saving…' : 'Save picture'}</button>
+  </section>;
 }
 
 export const rankLabel = (rank) => ({ 0: 'JK', 1: 'A', 11: 'J', 12: 'Q', 13: 'K' })[rank] || rank;

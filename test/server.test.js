@@ -848,3 +848,46 @@ test('room:update edits a waiting table for everyone and rejects invalid or late
   assert.equal(late.ok, false);
   assert.match(late.error, /lock once the cards are dealt/);
 });
+
+test('profile pictures save, validate, and appear on the table for every player', async (t) => {
+  const store = await createStore();
+  const server = createApp({ store });
+  await new Promise((resolve) => server.httpServer.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.httpServer.address().port}`;
+  const sockets = [];
+  t.after(async () => { sockets.forEach((socket) => socket.disconnect()); await server.close(); });
+  const people = [];
+  for (const name of ['Picture Host', 'Picture Guest']) {
+    const user = await store.createPlayer(name);
+    const token = await store.session(user);
+    const socket = io(url, { auth: { token }, transports: ['websocket'], autoConnect: false, reconnection: false });
+    const client = { user, token, socket, room: null, emit: (event, data) => socket.timeout(4000).emitWithAck(event, data) };
+    socket.on('room', (room) => { client.room = room; });
+    sockets.push(socket);
+    await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); socket.connect(); });
+    people.push(client);
+  }
+  const [host, guest] = people;
+  const save = (client, avatar) => fetch(`${url}/api/profile`, { method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${client.token}` }, body: JSON.stringify({ avatar }) });
+  assert.equal((await host.emit('room:create', { name: 'Pictures', capacity: 2, rules: { sameNumber: true, rummy: false, continuation: false } })).ok, true);
+  await until(() => host.room);
+  assert.equal((await guest.emit('room:join', { code: host.room.code })).ok, true);
+  await until(() => guest.room?.players.length === 2);
+
+  for (const bad of ['emoji:3:💩', 'initials:9', 'data:text/html;base64,AAAA', `data:image/jpeg;base64,${'A'.repeat(70_000)}`,
+    `data:image/jpeg;base64,${'A'.repeat(120_000)}`, 42]) {
+    assert.ok([400, 413].includes((await save(host, bad)).status), `should reject ${String(bad).slice(0, 30)}`);
+  }
+  const saved = await save(host, 'emoji:2:🦁');
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).user.avatar, 'emoji:2:🦁');
+  await until(() => guest.room.players.find((player) => player.id === host.user.id)?.avatar === 'emoji:2:🦁', 'The other player should see the new picture');
+  const me = await (await fetch(`${url}/api/me`, { headers: { Authorization: `Bearer ${host.token}` } })).json();
+  assert.equal(me.user.avatar, 'emoji:2:🦁');
+  const photo = `data:image/jpeg;base64,${Buffer.alloc(9000, 7).toString('base64')}`;
+  assert.equal((await save(guest, photo)).status, 200);
+  await until(() => host.room.players.find((player) => player.id === guest.user.id)?.avatar === photo);
+  assert.equal((await save(host, null)).status, 200);
+  await until(() => guest.room.players.find((player) => player.id === host.user.id)?.avatar === null);
+});

@@ -156,7 +156,7 @@ function MatchScorecard({ room, user, busy, notify, onClose, onLeave, onNextGame
         {standings.map((player, index) => <li key={player.id}
           className={`scorecard-row ${player.winner ? 'is-winner' : ''} ${player.eliminated ? 'is-out' : ''} ${player.id === user.id ? 'is-you' : ''}`}>
           <span className={`scorecard-place place-${player.place}`}>{placeLabel(player.place)}</span>
-          <Avatar name={player.name} index={room.players.findIndex((entry) => entry.id === player.id)} small />
+          <Avatar name={player.name} avatar={player.avatar} index={room.players.findIndex((entry) => entry.id === player.id)} small />
           <div className="scorecard-player">
             <b>{player.name}{player.id === user.id ? ' (you)' : ''}</b>
             <span>{standingStatus(player)} · {player.zeroRounds} zero round{player.zeroRounds === 1 ? '' : 's'}</span>
@@ -424,7 +424,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           <p className="sr-only" role="status">{myTurn ? 'It is your turn.' : ''}</p>
           <div className="opponents">
             {opponents.map((player, index) => <div key={player.id} style={{ '--seat-x': `${seatAt(seatPositions, index)[0]}%`, '--seat-y': `${seatAt(seatPositions, index)[1]}%` }} className={`opponent ${room.turnId === player.id ? 'opponent-active' : ''} ${player.eliminated ? 'eliminated' : ''}`}>
-              <div className="opponent-avatar"><Avatar name={player.name} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} />
+              <div className="opponent-avatar"><Avatar name={player.name} avatar={player.avatar} index={room.players.indexOf(player)} /><span className={`presence ${player.connected ? 'online' : ''}`} />
                 {!isWaiting && !player.eliminated && <span className="mobile-card-count" aria-label={`${player.name} has ${player.cardCount} ${player.cardCount === 1 ? 'card' : 'cards'}`}><Icon name="cards" size={12} /><b>{player.cardCount}</b></span>}
               </div>
               <b>{player.name}</b><span>{player.eliminated ? 'Watching' : isWaiting ? 'Ready to play' : `${player.cardCount} cards · ${player.score} pts`}</span>
@@ -477,7 +477,7 @@ export default function Game({ room, user, send, busy, connected, onRules, notif
           </div>
           <div className="felt-bottom"><span>5 CARDS SOCIAL CLUB</span><span>{isWaiting ? 'LESS IS ALWAYS MORE' : `${activeCount} PLAYERS IN THE GAME`}</span></div>
         <section className="hand-panel">
-          <div className="hand-heading"><div className={`your-hand-title ${myTurn ? 'your-hand-active' : ''}`}><Avatar name={user.name} small /><div><h3>Your hand {me?.eliminated && <span className="muted">· Watching</span>}</h3><p>{isWaiting ? 'The best seat in the house.' : myTurn ? 'Select cards to drop, or draw one.' : isRoundEnd || isFinished ? 'A fresh hand is a fresh start.' : 'Plan your next move.'}</p></div></div>
+          <div className="hand-heading"><div className={`your-hand-title ${myTurn ? 'your-hand-active' : ''}`}><Avatar name={user.name} avatar={me?.avatar ?? user.avatar} index={Math.max(0, room.players.findIndex((entry) => entry.id === user.id))} small /><div><h3>Your hand {me?.eliminated && <span className="muted">· Watching</span>}</h3><p>{isWaiting ? 'The best seat in the house.' : myTurn ? 'Select cards to drop, or draw one.' : isRoundEnd || isFinished ? 'A fresh hand is a fresh start.' : 'Plan your next move.'}</p></div></div>
             {!isWaiting && <div className="hand-total"><span>HAND VALUE</span><b>{me?.value ?? 0}<small>pts</small></b></div>}
           </div>
           <p className="hand-lives" role="status">{me?.lives} {me?.lives === 1 ? 'life' : 'lives'} remaining{me?.lives === 0 ? ' · Missed-turn limit reached. You are now watching.' : ''}</p>

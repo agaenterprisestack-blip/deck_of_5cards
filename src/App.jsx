@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { request, SERVER_URL } from './api.js';
-import { Avatar, FullscreenButton, Icon, Logo, Modal, RulesContent, TableForm } from './components.jsx';
+import { Avatar, FullscreenButton, Icon, Logo, Modal, ProfileEditor, RulesContent, TableForm } from './components.jsx';
 import Lobby, { History, Leaderboard, heroHeadlines } from './Lobby.jsx';
 import Game from './Game.jsx';
 
@@ -176,6 +176,16 @@ export default function App() {
     finally { setBusy(false); }
   }
   const signIn = () => setPage('login');
+  const [savingProfile, setSavingProfile] = useState(false);
+  async function saveProfile(avatar) {
+    setSavingProfile(true);
+    try {
+      const { user: updated } = await request('/profile', { token, method: 'PUT', body: JSON.stringify({ avatar }) });
+      setUser(updated);
+      notify('Your table picture is saved.', 'success');
+    } catch (error) { notify(error.message); }
+    finally { setSavingProfile(false); }
+  }
   function navigate(next) {
     if (!user && next !== 'play') { signIn(); return; }
     setPage(next);
@@ -221,7 +231,7 @@ export default function App() {
         <FullscreenButton notify={notify} />
         <button className="icon-button sound-toggle" aria-label={sound ? 'Mute game sounds' : 'Enable game sounds'} aria-pressed={sound} onClick={toggleSound}><Icon name={sound ? 'sound' : 'mute'} size={18} /></button>
         {restoring ? <span className="fine-print">Reconnecting…</span> : user ? <>
-          <button className={`profile-button ${page === 'profile' ? 'profile-active' : ''}`} onClick={() => navigate('profile')}><Avatar name={user.name} small /><span>{user.name}</span></button>
+          <button className={`profile-button ${page === 'profile' ? 'profile-active' : ''}`} onClick={() => navigate('profile')}><Avatar name={user.name} avatar={user.avatar} small /><span>{user.name}</span></button>
           <button className="icon-button logout-button" aria-label="End player session" onClick={logout} disabled={busy}><Icon name="exit" size={17} /></button>
         </> : <button className="button button-outline button-small" onClick={signIn}>Log in <Icon name="arrow" size={15} /></button>}
       </div>
@@ -244,7 +254,10 @@ export default function App() {
       </section> : page === 'play' ? room && user ? <Game room={room} user={user} send={send} busy={busy} connected={connected} onRules={() => setModal('rules')} notify={notify} notification={toast} onMyTurn={turnChime} />
         : <Lobby user={user} rooms={rooms} connected={connected} onCreate={() => setModal('create')} onJoin={(code) => send('room:join', { code })} onRules={() => setModal('rules')} onSignIn={signIn} headlineIndex={headlineIndex} />
         : dataError ? <section className="data-page"><h2>Couldn’t load this page.</h2><p role="alert" className="form-error">{dataError}</p><button className="button button-dark" onClick={() => setRefresh((value) => value + 1)}>Try again</button></section>
-          : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <History entries={data} user={user} loading={dataLoading} />}
+          : page === 'leaderboard' ? <Leaderboard entries={data} loading={dataLoading} /> : user && <>
+            <ProfileEditor user={user} busy={savingProfile} onSave={saveProfile} />
+            <History entries={data} user={user} loading={dataLoading} />
+          </>}
     </main>
     <footer className="site-footer"><div><Logo /><span>designed by GpTechstack...</span></div><p>Made for the love of the game. <span>♠ ♥ ♣ ♦</span></p><button onClick={() => setModal('rules')}>House rules <Icon name="arrow" size={14} /></button></footer>
     {modal === 'create' && <Modal title="Make it your table." subtitle="A name, a few rules, and your favorite people." notification={toast} onClose={() => setModal(null)}><TableForm busy={busy}

@@ -13,6 +13,7 @@ import { AccountError } from './store.js';
 import {
   GameError, createRoom, joinRoom, leaveRoom, startRound, playTurn, expireTurn, showHand, abortMatch, startNextGame, updateTable, roomView,
 } from './game.js';
+import { parseAvatar } from '../src/avatars.js';
 
 const usernameSchema = z.string().trim().normalize('NFKC').min(1, 'Enter your username.')
   .max(24, 'Use 24 characters or fewer.').regex(/^[a-zA-Z0-9_ -]+$/, 'Use letters, numbers, spaces, hyphens or underscores.');
@@ -49,7 +50,10 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
   const corsOptions = { origin: allowedOrigins };
   app.use(helmet());
   app.use(cors(corsOptions));
-  app.use(express.json({ limit: '16kb' }));
+  // Small bodies everywhere, except profile pictures (a resized photo is about 10 KB).
+  const smallJson = express.json({ limit: '16kb' });
+  const profileJson = express.json({ limit: '80kb' });
+  app.use((request, response, next) => (request.path === '/api/profile' ? profileJson : smallJson)(request, response, next));
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
     message: { error: 'Too many authentication attempts. Please wait 15 minutes.' } });
   app.get('/api/health', (_request, response) => response.json({
@@ -85,6 +89,21 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
     next();
   };
   app.get('/api/me', requireUser, (request, response) => response.json({ user: request.user }));
+  // Save a profile picture and show it straight away at any table the player is seated at.
+  app.put('/api/profile', requireUser, async (request, response) => {
+    const avatar = request.body?.avatar ?? null;
+    if (avatar !== null && !parseAvatar(avatar)) return response.status(400).json({ error: 'That picture could not be used. Choose another.' });
+    await store.setAvatar(request.user.id, avatar);
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.data.user?.id === request.user.id) socket.data.user.avatar = avatar;
+    }
+    const room = findRoom(request.user.id);
+    if (room) {
+      for (const player of room.players) if (player.id === request.user.id) player.avatar = avatar;
+      broadcastRoom(room);
+    }
+    response.json({ user: { ...request.user, avatar } });
+  });
   app.get('/api/leaderboard', requireUser, async (_request, response) => response.json(await store.leaderboard()));
   app.get('/api/history', requireUser, async (request, response) => response.json(await store.history(request.user.id)));
 
@@ -358,6 +377,7 @@ export function createApp({ store, clientOrigin = 'http://localhost:5173', produ
   }
   app.use((_request, response) => response.status(404).json({ error: 'Not found.' }));
   app.use((error, _request, response, _next) => {
+    if (error.type === 'entity.too.large') return response.status(413).json({ error: 'That upload is too large. Choose a smaller picture.' });
     console.error('Request failed:', error);
     response.status(error.status === 400 ? 400 : 500).json({
       error: error.status === 400 ? 'Invalid JSON request.' : 'The server could not complete the request.',
